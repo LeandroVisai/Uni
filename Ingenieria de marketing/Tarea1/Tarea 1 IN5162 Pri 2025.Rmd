@@ -51,7 +51,7 @@ options(digits = 5)   # Número de dígitos a utilizar
 ```
 
 ```{r P0 Fijamos directorio}
-#setwd("/Users/leandrovenegas/Desktop/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
 ```
 
 ```{r P0 Leemos la base}
