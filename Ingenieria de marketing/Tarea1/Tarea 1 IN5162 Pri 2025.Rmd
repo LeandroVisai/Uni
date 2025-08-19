@@ -51,7 +51,7 @@ options(digits = 5)   # Número de dígitos a utilizar
 ```
 
 ```{r P0 Fijamos directorio}
-setwd("/Users/leandrovenegas/Desktop/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
+#setwd("/Users/leandrovenegas/Desktop/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
 ```
 
 ```{r P0 Leemos la base}
@@ -76,7 +76,27 @@ datos_precios <- datos_precios %>%
 datos_precios <- datos_precios %>%
   mutate(Precio_Final = ifelse(!is.na(Precio_Oferta) & Promocion == 1, Precio_Oferta, Precio_Normal))
 
+
+
+str(datos_precios)
+
+summary(datos_precios)
+
+#Numerica para año
+
+datos_precios$Ano <- as.numeric(datos_precios$Ano)
+
+summary(datos_precios$Ano)
+summary(datos_precios$Mes)
+#Veamos datos
+
+View(datos_precios)
+
+
+
+
 # Ademas no todas las columnas son importantes, no podemos comparar el precio de la sal, azucar y endulzante por ejemplo.
+
 
 
 
