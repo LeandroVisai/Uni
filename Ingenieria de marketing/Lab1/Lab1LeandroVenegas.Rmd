@@ -1,0 +1,127 @@
+---
+title:  "Laboratorio 1. IN5162"
+author: "Leandro Venegas Vera"
+date:   "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+    theme: simplex
+    highlight: tango
+    toc: yes
+encoding: UTF-8
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Instalando paquetes}
+#install.packages("rmarkdown")
+install.packages("ggplot2")
+install.packages("kableExtra")
+install.packages("modelsummary")
+```
+
+
+```{r Instalando paquetes}
+library(rmarkdown)
+library(ggplot2)       # for plots
+library(kableExtra)   # to format tables
+library(modelsummary) # to summarize regression models
+```
+
+Limpiamos los elementos guardados y fijamos el directorio.
+
+```{r Fijando directorio}
+rm(list=ls())         # Limpia la lista de objetos 
+graphics.off()        # Limpia la lista de gráficos
+options(digits = 5)   # Número de dígitos a utilizar
+
+setwd("/Users/leandrovenegas/Desktop/Ingenieria de marketing")  # fijando el directorio de trabajo
+```
+
+## Preguntas
+
+##### Pregunta 1 
+
+Use la función *rnorm()* para definir un _dataframe_ con columnas $x_1$ y $x_2$ de tamaño 30. Use la misma función para definir tambien una columna de errores normales $\varepsilon$. Notar que puede incluir en la función *rnorm()* la media y desviación estándar que desea en sus vectores. Para este caso use la que prefiera, si no le entrega ninguna a la función, por defecto creará datos con media 0 y desviación estándar 1. 
+
+```{r p1a}
+
+#definir Dataframe con columnas x1, x2 y e
+set.seed(27)
+df <- data.frame(x1 = rnorm(30,mean = 10, sd = 1),
+                 x2 = rnorm(30,mean = 3, sd = 0.5),
+                 e = rnorm(30))
+head(df)
+```
+
+
+Elija ahora tres valores cualquiera de $b_0$, $b_1$ y $b_2$ y defina la columna $y$ como $y = b_0 + b_1 x_1 + b_2 x_2 + \varepsilon$. 
+
+```{r p1b}
+# definir b0, b1 y b2
+
+b0 <- 8
+b1 <- 1.5
+b2 <- 2
+
+# definir df$y <- b0 + b1*df$x1 + b2*df$x2 + df$e
+df$y <- b0 + b1*df$x1 + b2*df$x2 + df$e
+head(df)
+
+```
+
+##### Pregunta 2
+
+Use el comando *lm()* para correr un modelo de regresión $y = b_0 + b_1 x_1 + b_2 x_2 + \varepsilon$. 
+```{r p2a}
+# myreg <- lm()
+myreg <- lm(y ~ x1 + x2, data = df)
+
+#summary(myreg)
+summary(myreg)
+```
+
+Repita la pregunta 1, pero generando las columnas $x_1$, $x_2$, $\varepsilon$ (y consecuentemente de $y$) con un largo 10000. Ejecute de nuevo la regresión y compare los resultados de ambas regresiones. Para estos efectos, mantenga los mismos valores de $b_0$, $b_1$ y $b_2$ y las mismas medias y desviaciones estándar que usó en la generación de los vectores $x_1$, $x_2$ y $\epsilon$ en la pregunta 1.
+
+```{r p2b}
+# definir dataframe con columnas x1, x2 y e
+set.seed(27) #use misma semilla
+df1 <- data.frame(x1 = rnorm(10000,mean = 10, sd = 1),
+                 x2 = rnorm(10000,mean = 3, sd = 0.5),
+                 e = rnorm(10000))
+head(df)
+
+# definir df$y = b0 + b1*df$x1 + b2*df$x2 + df$e
+df1$y <- b0 + b1*df1$x1 + b2*df1$x2 + df1$e
+
+# myreg <- lm()
+myreg2 <- lm(y ~ x1 + x2, data = df1)
+#summary(myreg)
+summary(myreg2)
+```
+
+Comparamos ambas regresiones en unica tabla:
+
+```{r}
+modelsummary(list(M1=myreg, M2=myreg2), 
+             fmt = 2,
+             estimate  = "{estimate}{stars}({std.error})",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared", "adj.r.squared", "rmse"))
+```
+
+Comente qué cambia.
+Podemos notar que la diferencia radica en el numero de observaciones utilizadas para cada modelo, 
+al utilizar 10000 observaciones por ley de grandes numeros el error cuadratico disminuye y los estimadores son casi identicos a los coheficientes entregados de b0,b1 y b2.
+En cambio al utilizar solo 30 observaciones, no tenemos ley de grandes numeros y por tanto la media no de los interceptos no se aproximan a los coheficientes impuestos, 
+vemos un mayor error estandar y existe una diferencia mayor a los coheficientes en comparación de la muestra con 10000 observaciones.
+
+##### Pregunta 3
+
+Describa una situación que le parezca interesante en que podría usar un enfoque de regresión con dos variables como el que ha implementado en las preguntas anteriores.
+
+Uno de los ejemplos tipicos, y es interesante de estudiar son los ingresos como variable dependiente y variables independientes como nivel educacional y nivel de ingresos de padres.
+Usualmente la variable que mayor explican los ingresos son el nivel de ingresos de padres, sin embargo lo que mejora aun mas el modelo son la aplicación de interacciones al modelo.
+El aplicar interacciones nos permite ver el efecto real considerando ambas variables.
