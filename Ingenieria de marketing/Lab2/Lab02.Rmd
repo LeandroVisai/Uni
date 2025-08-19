@@ -1,0 +1,171 @@
+---
+title:  'Laboratorio 2. IN5162 - Semestre Primavera 2025'
+author: 'Agregar Nombre'
+date:   '20 de Agosto de 2025'
+output:
+  html_document:
+    df_print: paged
+    theme: simplex
+    highlight: tango
+    toc: yes
+encoding: UTF-8
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preliminares
+
+En el laboratorio pasado presentamos los comandos básicos de R y cómo integrarlos en un documento de R-Markdown para presentar los resultados. En este laboratorio haremos un ejercicio simple de regresión lineal. Siguiendo el _proceso cíclico_ de desarrollo que discutimos en clase, en este laboratorio:
+
+- Construiremos un par de modelos simples.
+- Estimaremos los parámetros del modelo.
+- Evaluaremos el ajuste del modelo.
+- Discutiremos críticamente las soluciones obtenidas. 
+
+Además, como antecedente previo a la construcción del modelo exploraremos brevemente la base para tener una idea de las relación entre las variables. 
+
+La base de datos para la elaboración de este laboratorio corresponde a los resultados de las campañas de una compañía XYZ en una plataforma de _social media_. En esta plataforma, una campaña está compuesta por varios avisos que son desplegados a distintos segmentos etarios y de genero. Así, en la base observamos las respuestas de las campañas ejecutadas sobre varios segmentos a través de las siguientes variables: 
+
+1. *ad_id*: Identificador del aviso. 
+2. *xyz_campaign_id*: Identificador de la campaña a la que pertenece el aviso.
+3. *fb_campaign_id*: Identificador interno de la plataforma de social media para registrar cada campaña.
+4. *age*: Rango de edad del segmento al que se muestra el anuncio.
+5. *género*: Género del segmento al que se muestra el anuncio.
+6. *interés:* Una etiqueta que especifica la categoría de interés de las personas del segmento, de acuerdo a la declaración de los usarioa al momento de registrarse en la plataforma.
+7. *impresiones*: Número de veces que se ha mostrado el anuncio.
+8. *clicks*: Número de clicks para ese anuncio.
+9. *spent*: Cantidad pagada por la empresa XYZ a Facebook, para mostrar ese anuncio.
+10. *total conversion*: Número total de personas que preguntaron por el producto después de ver el anuncio.
+11. *Approved Conversion*: Número total de personas que compraron el producto después de ver el anuncio.
+
+Los modelos de regresión buscan describir el número de clicks generados por cada campaña. 
+
+
+# Desarollo del laboratorio {.tabset}
+
+## R y Paquetes
+
+### Recordatorio: Antes de comenzar a Programar
+
+Antes de comenzar debemos setear el directorio de trabajo (ie. donde están los archivos, bases y documentos a utilizar). Además, le puede ser util limpiar el espacio de trabjo y fijar decimales.
+
+
+```{r start, eval = FALSE}
+
+# como tenemos eval = FALSE, esta secuencia no se va a ejecutar. Solo la incluimos como referencia.
+
+rm(list=ls())         # Limpia la lista de objetos 
+graphics.off()        # Limpia la lista de gráficos
+options(digits = 5)   # Número de dígitos a utilizar
+
+setwd("C:/Users/antog/OneDrive/Escritorio/Uchile")
+
+ # fijen el directorio de trabajo que les acomode
+```
+
+### Instalación de paquetes útiles
+
+```{r paquetes, message = FALSE}
+
+library(readr)      #Para leer el .csv
+library(glmnet)     #Ajusta modelo lineal
+library(ggplot2)    #Para realización de gráficos
+library(ggcorrplot) #Para realizar correlogramas
+library(fixest)     #Para correr modelos con efectos fijos
+library(tidyverse)  #Funcionalidades para manipular y desplegar datos
+library(kableExtra) #Para formatear tablas
+
+```
+
+### Lectura de base a utilizar
+
+```{r lectura}
+XYZ <- read.csv("XYZ_conversion_data.csv", header = TRUE)
+head(XYZ)
+```
+
+## EDA
+
+Como siempre, el espacio de posibilidades para explorar los datos es amplio y excede lo que podemos describir en el contexto de este laboratorio. A modo de ilustración generaremos (i) algunos histogramas de la variable dependiente en función de las campañas y las características de los segmentos y (ii) un gráfico de correlación para tener una primera impresión de qué variables podrían tener valor predictivo sobre el número de clicks. 
+
+### Histogramas y boxplots
+
+Descomponemos por campaña, género y edad.  
+```{r}
+# Comparar clicks por genero para cada campaña
+ggplot(XYZ, aes(x=Clicks, fill=gender)) +
+        geom_histogram(bins=20) +
+        facet_grid(gender ~ xyz_campaign_id, scales = "free")
+
+# Comparar clicks por genero para cada campaña
+ggplot(XYZ, aes(x=Clicks, fill=age)) +
+        geom_histogram(bins=20) +
+        facet_grid(age ~ xyz_campaign_id, scales = "free")
+```
+
+Al inspeccionar los histogramas notamos que la campaña _1178_ es la que genera más clicks. Aunque hay algunas diferencias por género y edad, parecen de menor magnitud que las diferencias de las campañas. 
+
+Podríamos repetir el análisis para ver qué pasa con la variable _interest_, pero tiene 40 niveles por lo que el gráfico quedaría demasiado cargado. Como alternativa vamos a reportar un boxplot, para la campaña _1178_ que es la que tiene más clicks. 
+
+```{r}
+ggplot(subset(XYZ, xyz_campaign_id==1178), aes(x=as.factor(interest), y=Clicks)) + geom_boxplot() + xlab("interest")
+```
+
+Como hay muchos niveles es difícil describir un patrón general, pero se aprecia que efectivamente hay algunas categorías de interés que están asociadas a más clicks para las campañas de XYZ.
+
+### Matriz de correlación
+
+Nos interesa saber cómo se relacionan las distintas variables entre ellas para comprender mejor su comportamiento y considerar esto al momento de utilizarlas en los modelos de regresión. 
+
+Las matrices de correlación nos permiten resumir de manera muy compacta la correlación entre variables numéricas. 
+```{r matriz_corre}
+r <- cor(subset(XYZ, select=c('Impressions','Clicks','Spent','Total_Conversion')), method = "pearson")
+ggcorrplot(r, type = "lower", lab = TRUE)
+```
+
+No es sorpresa que estas variables esten correlacionadas. Sin embargo, ¿hace sentido incluir _Spent_ y _Total_Conversion_ como variables independientes en la descripción de _Clicks_? En general no, porque en una nueva campaña son variables que solo observaríamos después de observar los clicks y por lo tanto no nos sirven para predecir.  
+
+¿Qué pasa con las variables discretas? Se podrían describir a traves de tablas de contingencia o mirando histogramas por niveles como ya hicimos anteriormente con histogramas y boxplots. 
+
+## Regresiones
+
+### Regresión lineal
+
+Partiremos con dos modelos de regresión relativamente sencillos:
+
+- m1: el numero de clicks depende de la campaña, genero, edad.  
+- m2: el numero de clicks depende de la campaña, genero, edad, más un efecto fijo por grupo de interes.   
+
+```{r regresion_1}
+m1 <- feols(Clicks ~ factor(xyz_campaign_id)+factor(gender)+factor(age), data=XYZ)
+m2 <- feols(Clicks ~ factor(xyz_campaign_id)+factor(gender)+factor(age) | interest, data=XYZ)
+
+myresults <- etable(m1, m2, digits="r2", digits.stats="r3", fitstat=c("n","r2","aic","rmse"))
+
+myresults %>%
+  kbl(caption = "Regressions with Fixed Effects", align=c('l','r','r')) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+
+## Preguntas
+
+### Pregunta 1
+
+Repita los modelos m1 y m2, pero usando $clicks/Impressions$ como variable dependiente. Agrupe los resultados de los cuatro modelos en una única tabla. En términos conceptuales, ¿Qué variable dependiente le hace más sentido? 
+
+```{r p1_1}
+# Agregar modelos m3 y m4 y desplegar resultados
+```
+
+### Pregunta 2
+
+En base a las métricas de ajuste, qué modelo le parece el más adecuado
+
+### Pregunta 3
+
+Para el modelo que le parezca más adecuado, interprete los resultados. En particular, discuta qué campañas son más efectivas. 
