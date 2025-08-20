@@ -61,8 +61,7 @@ rm(list=ls())         # Limpia la lista de objetos
 graphics.off()        # Limpia la lista de gráficos
 options(digits = 5)   # Número de dígitos a utilizar
 
-setwd("C:/Users/antog/OneDrive/Escritorio/Uchile")
-
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Lab2") 
  # fijen el directorio de trabajo que les acomode
 ```
 
@@ -160,12 +159,54 @@ Repita los modelos m1 y m2, pero usando $clicks/Impressions$ como variable depen
 
 ```{r p1_1}
 # Agregar modelos m3 y m4 y desplegar resultados
+#Primero agregamos la columna, clicks por anuncio:align
+
+XYZ <- XYZ %>%
+  mutate(Clicksporimpresion = Clicks/Impressions)
+
+View(XYZ)
 ```
+```{r}
+# Agregar modelos m3 y m4
+m3 <- feols(Clicksporimpresion ~ factor(xyz_campaign_id) + factor(gender) + factor(age), data=XYZ)
+m4 <- feols(Clicksporimpresion ~ factor(xyz_campaign_id) + factor(gender) + factor(age) | interest, data=XYZ)
+
+myresults <- etable( m3, m4, digits="r2", digits.stats="r3", fitstat=c("n","r2","aic","rmse"))
+
+myresults %>%
+  kbl(caption = "Regressions with Fixed Effects", align=c('l','r','r')) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+```{r}
+# Log-linealizamos para ver algun efecto de los coheficientes que antes eran minimos.
+m3 <- feols(log(I(Clicks/Impressions)) ~ factor(xyz_campaign_id) + factor(gender) + factor(age), data=XYZ)
+m4 <- feols(log(I(Clicks/Impressions)) ~ factor(xyz_campaign_id) + factor(gender) + factor(age) | interest, data=XYZ)
+
+myresults <- etable( m1, m2, m3, m4, digits="r2", digits.stats="r3", fitstat=c("n","r2","aic","rmse"))
+
+myresults %>%
+  kbl(caption = "Regressions with Fixed Effects", align=c('l','r','r')) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+Notamos que nos entrega mas informaciòn la escala logaritmica, esto debido a que los coeficientes utilizando solo click/impresiones es bajo.
+
+Ademas, la variable que mas hace sentido es click/impresiones, debido a que nos entrega mas información que solo los clicks en un anuncio. Pareciera que la tasa de clicks por impresiones nos entrega mayor información al momento de explicar el modelo.
+
 
 ### Pregunta 2
 
 En base a las métricas de ajuste, qué modelo le parece el más adecuado
 
+Con respecto a las metricas de ajuste, podemos notar que quien tiene el mayor R cuadrado es m4, lo que indica que las variables independientes explican mayormente a la variable dependiente mas que cualquier otro modelo utilizado. Ademas, presenta el RMSE mas bajo de todos los modelos lo que indica que tiene el menor error promedio.
+
+Podemos decir que usar log(clicks/impresiones) y controlar por efecto fijo genera un mayor impacto a la fiabilidad del modelo.
+
 ### Pregunta 3
 
 Para el modelo que le parezca más adecuado, interprete los resultados. En particular, discuta qué campañas son más efectivas. 
+
+Primero para obtener una interpretación de los coeficientes tenemos que someterlos al siguiente calculo: exp(coeficiente)-1.
+
+De aqui podemos obtener que la campaña menos eficiente es 1178, la cual genera un -51% de los clicks por impresión. Ademas el rango etario al cual tiene un efecto positivo y significativo es entre 35 y 49 años, siendo el del ultimo segmento 45-49 años los que generan un cambio de 63% mas de clicks por impresiones. Ademas podemos notar que tener el genero masculino genera un efecto negativo en la variable dependiente, por lo que el sexo femenino genera una mayor cantidad de clicks por impresión.
