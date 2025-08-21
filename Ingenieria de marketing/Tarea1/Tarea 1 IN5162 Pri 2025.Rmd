@@ -76,32 +76,46 @@ datos_precios <- datos_precios %>%
 datos_precios <- datos_precios %>%
   mutate(Precio_Final = ifelse(!is.na(Precio_Oferta) & Promocion == 1, Precio_Oferta, Precio_Normal))
 
-
+#Y eliminamos precio oferta, ya que no lo necesitamos con la nueva variable
+datos_precios <- datos_precios %>%
+  select(-Precio_Oferta)
 
 str(datos_precios)
-
 summary(datos_precios)
 
 #Numerica para año
-
 datos_precios$Ano <- as.numeric(datos_precios$Ano)
-
 summary(datos_precios$Ano)
 summary(datos_precios$Mes)
 #Veamos datos
+
+#ademas agregamos precio unitario, para considerar el precio por volumen.
+datos_precios <- datos_precios %>%
+  mutate(Precio_Unitario = Precio_Final / Peso_Volumen)
 
 View(datos_precios)
 
 
 
+```
 
-# Ademas no todas las columnas son importantes, no podemos comparar el precio de la sal, azucar y endulzante por ejemplo.
+Ademas no todas las columnas son importantes, no podemos comparar el precio de la sal, azucar y endulzante por ejemplo. Para esto debemos agrupar los productos por el tipo de producto, es decir todas las azucar que se venden en chile se deben agrupar en alguna unica.
 
+Por lo que, hacemos un group by y calculamos el promedio:
 
+```{r agrupamos por sub_categoria, Pais y Cadena}
+precio_por_cadena <- datos_precios %>% group_by(Pais, Cadena, Sub_categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(Precio_Unitario, na.rm = TRUE)) #%>%
+  #ungroup() # Es una buena práctica desagrupar al final
+View(precio_por_cadena)
+```
 
-
-head(datos_precios)
-
+```{r agrupamos por sub_categoria Y Pais}
+precio_por_pais <- datos_precios %>%
+  group_by(Pais, Sub_categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(Precio_Unitario, na.rm = TRUE))# %>%
+  #ungroup() # Es una buena práctica desagrupar al final
+View(precio_por_pais)
 ```
 
 
