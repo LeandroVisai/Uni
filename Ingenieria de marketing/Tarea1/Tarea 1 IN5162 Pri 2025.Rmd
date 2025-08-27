@@ -104,7 +104,7 @@ Ademas no todas las columnas son importantes, no podemos comparar el precio de l
 Por lo que, hacemos un group by y calculamos el promedio:
 
 ```{r agrupamos por sub_categoria, Pais y Cadena}
-precio_por_cadena <- datos_precios %>% group_by(Pais, Cadena, Sub_categoria) %>%
+precio_por_cadena <- datos_precios %>% group_by(Pais,Ano,Mes, Cadena, Sub_categoria) %>%
   summarise(Precio_Unitario_Promedio = mean(Precio_Unitario, na.rm = TRUE)) #%>%
   #ungroup() # Es una buena práctica desagrupar al final
 View(precio_por_cadena)
@@ -112,7 +112,7 @@ View(precio_por_cadena)
 
 ```{r agrupamos por sub_categoria Y Pais}
 precio_por_pais <- datos_precios %>%
-  group_by(Pais, Sub_categoria) %>%
+  group_by(Pais,Ano,Mes, Sub_categoria) %>%
   summarise(Precio_Unitario_Promedio = mean(Precio_Unitario, na.rm = TRUE))# %>%
   #ungroup() # Es una buena práctica desagrupar al final
 View(precio_por_pais)
