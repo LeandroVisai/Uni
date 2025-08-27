@@ -40,6 +40,7 @@ library(modelsummary)
 library(caret)
 library(earth)
 library(randomForest)
+library(tidyr)
 ```
 
 ```{r P0 Limpiamos objetos}
@@ -58,8 +59,13 @@ setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1
 #Exploración de datos
 # Leemos el archivo CSV.
 datos_precios = read_excel("Canasta_de_productos.xlsx")
+Tipo_cambio <- read.csv("Tipo_cambio.csv")
 head(datos_precios)
+head(Tipo_cambio)
 ```
+
+
+
 
 
 ```{r P0 Transformamos la base}
@@ -83,21 +89,68 @@ datos_precios <- datos_precios %>%
 str(datos_precios)
 summary(datos_precios)
 
+
 #Numerica para año
 datos_precios$Ano <- as.numeric(datos_precios$Ano)
 summary(datos_precios$Ano)
 summary(datos_precios$Mes)
 #Veamos datos
 
+# Primero defines los meses en orden
+meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+           "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+
+# Luego conviertes la columna "Mes" en factor ordenado y después a número
+datos_precios$Mes <- match(datos_precios$Mes, meses)
+
+print(datos_precios$Mes)
+```
+
+```{r}
+# 2. Pasar a formato largo (de columnas de países a columna Pais + TipoCambio)
+Tipo_Cambio <- Tipo_cambio %>%
+  pivot_longer(
+    cols = c(Argentina, Chile, Colombia, España, Perú, Portugal, UK),
+    names_to = "Pais",
+    values_to = "TipoCambio"
+  )
+
+View(Tipo_Cambio)
+
+datos_precios$Ano <- as.integer(datos_precios$Ano)
+
+str(datos_precios)
+
+
+# 3. Unir con la base de precios (df_precios)
+datos_precios_tc <- datos_precios %>%
+  left_join(Tipo_Cambio, by = c("Pais", "Ano", "Mes")) %>%
+  mutate(
+    Precio_Normal_usd = Precio_Normal * TipoCambio,
+    Precio_Final_usd  = Precio_Final  * TipoCambio
+  )
+
+View(datos_precios_tc)
+
+```
+
+
+
+
+
+```{r}
+
 #ademas agregamos precio unitario, para considerar el precio por volumen.
 datos_precios <- datos_precios %>%
   mutate(Precio_Unitario = Precio_Final / Peso_Volumen)
 
 View(datos_precios)
+```
 
-
+```{r}
 
 ```
+
 
 Ademas no todas las columnas son importantes, no podemos comparar el precio de la sal, azucar y endulzante por ejemplo. Para esto debemos agrupar los productos por el tipo de producto, es decir todas las azucar que se venden en chile se deben agrupar en alguna unica.
 
@@ -129,6 +182,11 @@ Documenten acá el desarrollo de su tarea por pregunta.
 
 ```{r P1}
 #Exploración de datos
+
+# Ver valores únicos
+unique(datos_precios$Pais)   # lista de países
+unique(datos_precios$Ano)    # lista de años
+unique(datos_precios$Mes)    # lista de meses
 
 
 ```
