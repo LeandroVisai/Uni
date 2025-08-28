@@ -143,11 +143,11 @@ cat("Productos con Peso_Volumen < 0.1:", conteo_menores, "\n")
 cat("Productos con Peso_Volumen >= 0.1:", conteo_mayores, "\n")
 
 # Eliminar los que son menores a 0.1, porque son solo el 8% de los datos
-datos_precios_tc <- datos_precios %>% filter(Peso_Volumen >= 0.1)
+datos_precios_tc <- datos_precios_tc %>% filter(Peso_Volumen >= 0.1)
 
 # Revisar estructura final
 summary(datos_precios_tc$Peso_Volumen)
-
+View(datos_precios_tc)
 ```
 
 
@@ -155,12 +155,18 @@ summary(datos_precios_tc$Peso_Volumen)
 
 #ademas agregamos precio unitario, para considerar el precio por volumen.
 datos_precios_tc <- datos_precios_tc %>%
-  mutate(Precio_Unitario = Precio_Final / Peso_Volumen)
+  mutate(PrecioU_oferta_usd = Precio_Final_usd/Peso_Volumen, PrecioU_Normal_usd = Precio_Normal_usd/Peso_Volumen)
+
 
 View(datos_precios_tc)
 ```
 
 ```{r}
+
+datos_precios_tc <- datos_precios_tc %>%
+  select(-Date,-Precio_Final,-Precio_Normal,-TipoCambio,-Precio_Final_usd,-Precio_Normal_usd,-Peso_Volumen)
+
+View(datos_precios_tc)
 
 ```
 
