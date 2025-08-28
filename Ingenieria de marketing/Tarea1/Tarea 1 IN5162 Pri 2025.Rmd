@@ -64,6 +64,19 @@ head(datos_precios)
 head(Tipo_cambio)
 ```
 
+```{r}
+#Pasar a formato largo (de columnas de países a columna Pais + TipoCambio)
+Tipo_Cambio <- Tipo_cambio %>%
+  pivot_longer(
+    cols = c(Argentina, Chile, Colombia, España, Perú, Portugal, UK),
+    names_to = "Pais",
+    values_to = "TipoCambio"
+  )
+
+View(Tipo_Cambio)
+
+```
+
 
 
 
@@ -75,7 +88,6 @@ head(Tipo_cambio)
 # Renombramos únicamente la columna que nos falta
 datos_precios <- datos_precios %>%
   rename(Sub_categoria = `Sub-categoria`)
-
 
 # Creamos una variable que se llame precio final, para explorar si existen cambios en cuanto a las ofertas que ofrecen las cadenas de supermercados
 
@@ -102,27 +114,13 @@ meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
 
 # Luego conviertes la columna "Mes" en factor ordenado y después a número
 datos_precios$Mes <- match(datos_precios$Mes, meses)
+datos_precios$Mes <- as.numeric(datos_precios$Mes)
 
 print(datos_precios$Mes)
 ```
 
 ```{r}
-# 2. Pasar a formato largo (de columnas de países a columna Pais + TipoCambio)
-Tipo_Cambio <- Tipo_cambio %>%
-  pivot_longer(
-    cols = c(Argentina, Chile, Colombia, España, Perú, Portugal, UK),
-    names_to = "Pais",
-    values_to = "TipoCambio"
-  )
-
-View(Tipo_Cambio)
-
-datos_precios$Ano <- as.integer(datos_precios$Ano)
-
-str(datos_precios)
-
-
-# 3. Unir con la base de precios (df_precios)
+#Unir con la base de precios (df_precios)
 datos_precios_tc <- datos_precios %>%
   left_join(Tipo_Cambio, by = c("Pais", "Ano", "Mes")) %>%
   mutate(
@@ -135,16 +133,31 @@ View(datos_precios_tc)
 ```
 
 
+```{r}
+# --- Filtrado y conteo de Peso_Volumen ---
+# Contar productos menores a 0.1 y mayores/iguales
+conteo_menores <- datos_precios_tc %>% filter(Peso_Volumen < 0.1) %>% nrow()
+conteo_mayores <- datos_precios_tc %>% filter(Peso_Volumen >= 0.1) %>% nrow()
 
+cat("Productos con Peso_Volumen < 0.1:", conteo_menores, "\n")
+cat("Productos con Peso_Volumen >= 0.1:", conteo_mayores, "\n")
+
+# Eliminar los que son menores a 0.1, porque son solo el 8% de los datos
+datos_precios_tc <- datos_precios %>% filter(Peso_Volumen >= 0.1)
+
+# Revisar estructura final
+summary(datos_precios_tc$Peso_Volumen)
+
+```
 
 
 ```{r}
 
 #ademas agregamos precio unitario, para considerar el precio por volumen.
-datos_precios <- datos_precios %>%
+datos_precios_tc <- datos_precios_tc %>%
   mutate(Precio_Unitario = Precio_Final / Peso_Volumen)
 
-View(datos_precios)
+View(datos_precios_tc)
 ```
 
 ```{r}
