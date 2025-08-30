@@ -184,7 +184,7 @@ View(precio_por_cadena)
 
 ```{r agrupamos por sub_categoria Y Pais}
 precio_por_pais <- datos_precios_tc %>%
-  group_by(Pais,Ano,Mes, Sub_categoria) %>%
+  group_by(Pais, Sub_categoria) %>%
   summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
   #ungroup() # Es una buena práctica desagrupar al final
 View(precio_por_pais)
@@ -198,17 +198,135 @@ Documenten acá el desarrollo de su tarea por pregunta.
 #### Pregunta 1
 
 (1.0 puntos) Exploren los datos para entender la distribución del precio de los abarrotes y ver qué variables podrían ayudar a explicar posibles diferencias en el nivel de precios entre países.
+```{r Exploración de datos}
+
+
+# 3. Generamos el mapa de calor (heatmap)
+ggplot(precio_por_pais, aes(x = Sub_categoria, y = Pais, fill = Precio_Unitario_Promedio)) +
+  geom_tile(color = "white") + # geom_tile() es la función para crear el heatmap
+  scale_fill_viridis_c(option = "plasma") + # Una paleta de colores más atractiva
+  labs(
+    title = "Mapa de Calor de Precios Unitarios Promedio",
+    subtitle = "Comparación de todas las Subcategorías entre todos los Países",
+    x = "Subcategoría de Producto",
+    y = "País",
+    fill = "Precio Promedio (USD)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1) # Gira las etiquetas para que no se solapen
+  )
+
+
+```
+
+
+Notamos que, el mapa de calor nos hace pensar que por categoria, los datos tienen un precio parecido dentro de un mismo pais.
+
+
 
 ```{r P1}
 #Exploración de datos
 
-# Ver valores únicos
-unique(datos_precios$Pais)   # lista de países
-unique(datos_precios$Ano)    # lista de años
-unique(datos_precios$Mes)    # lista de meses
+# Generamos el gráfico de dispersión
+ggplot(precio_por_pais, aes(x = Sub_categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(
+    title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Subcategoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) # Rotar etiquetas del eje X
+  )
+```
+
+
+```{r}
+View(precios_unidos)
+
+
+#Subimos el nivel de agregación, para usar conjunto de productos.
+precio_por_categoria <- datos_precios_tc %>%
+  group_by(Pais, Categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
+  #ungroup() # Es una buena práctica desagrupar al final
+View(precio_por_categoria)
+
+```
+
+
+
+
+
+```{r}
+
+# Filtramos directamente, manteniendo solo las categorías que aparecen en 7 países.
+# Esta es la forma más directa de hacerlo.
+precio_categorias_comunes <- precio_por_categoria %>%
+  group_by(Categoria) %>%
+  filter(n_distinct(Pais) == 7) %>%
+  ungroup()
+
+# Verificamos el resultado para confirmar que solo tenemos
+View(precio_categorias_comunes)
+```
+
+
+```{r}
+
+ggplot(precio_categorias_comunes, aes(x = Categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(
+    title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Categoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) # Rotar etiquetas del eje X
+  )
+
 
 
 ```
+
+
+```{r}
+#Subimos el nivel de agregación, para usar conjunto de productos.
+precio_por_pais <- datos_precios_tc %>%
+  group_by(Pais) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
+  #ungroup() # Es una buena práctica desagrupar al final
+View(precio_por_pais)
+
+
+
+
+ggplot(precio_por_pais, aes(x = Pais, y = Precio_Unitario_Promedio)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(
+    title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Categoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) # Rotar etiquetas del eje X
+  )
+
+
+
+
+```
+
 
 #### Pregunta 2
 
