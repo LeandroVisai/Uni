@@ -191,6 +191,48 @@ View(precio_por_pais)
 ```
 
 
+```{r Group by producto menos de 15 dolares}
+
+datos_filtrados <- datos_precios_tc %>%
+  filter(PrecioU_oferta_usd < 15)
+
+
+precio_por_subcategoria1 <- datos_precios_tc %>%
+  group_by(Pais, Sub_categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
+
+View(precio_por_subcategoria1)
+
+
+```
+
+
+
+```{r}
+# 3. Generamos el mapa de calor (heatmap)
+# Generamos el gráfico de dispersión
+ggplot(precio_por_subcategoria1, aes(x = Sub_categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(
+    title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Subcategoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) # Rotar etiquetas del eje X
+  )
+
+
+
+
+```
+
+
+
+
 ## Desarrollo
 
 Documenten acá el desarrollo de su tarea por pregunta.
@@ -278,7 +320,11 @@ View(precio_categorias_comunes)
 
 ```{r}
 
-ggplot(precio_categorias_comunes, aes(x = Categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+precio_categorias_comunes1 <- precio_categorias_comunes %>%
+  filter(Pais %in% c("Perú", "Colombia", "UK"))
+
+
+ggplot(precio_categorias_comunes1, aes(x = Categoria, y = Precio_Unitario_Promedio, color = Pais)) +
   geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
   labs(
     title = "Dispersión de Precios Promedio por Subcategoría y País",
@@ -291,6 +337,10 @@ ggplot(precio_categorias_comunes, aes(x = Categoria, y = Precio_Unitario_Promedi
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) # Rotar etiquetas del eje X
   )
+
+
+
+
 
 
 
