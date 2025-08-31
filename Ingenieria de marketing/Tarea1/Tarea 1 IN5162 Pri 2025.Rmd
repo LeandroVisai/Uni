@@ -59,10 +59,15 @@ setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1
 #Exploración de datos
 # Leemos el archivo CSV.
 datos_precios = read_excel("Canasta_de_productos.xlsx")
+
+
+# Cargamos la base tipo de cambio.
 Tipo_cambio <- read.csv("Tipo_cambio.csv")
+
 head(datos_precios)
 head(Tipo_cambio)
 ```
+
 
 ```{r}
 #Pasar a formato largo (de columnas de países a columna Pais + TipoCambio)
@@ -76,8 +81,6 @@ Tipo_Cambio <- Tipo_cambio %>%
 View(Tipo_Cambio)
 
 ```
-
-
 
 
 
@@ -184,13 +187,11 @@ Por lo que, hacemos un group by y calculamos el promedio:
 
 ```{r agrupamos por sub_categoria Y Pais}
 precio_por_pais <- datos_precios_tc %>%
-  group_by(Pais, Sub_categoria) %>%
+  group_by(Ano, Mes, Pais, Sub_categoria) %>%
   summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
   #ungroup() # Es una buena práctica desagrupar al final
 View(precio_por_pais)
 ```
-
-
 
 
 
@@ -328,7 +329,46 @@ ggplot(precio_por_pais, aes(x = Pais, y = Precio_Unitario_Promedio)) +
   )
 ```
 
+Luego de ver visualmente la distribución de variables, podriamos estudiar el ranking de paises baratos/caros, usando un posible ranking.
 
+```{r}
+
+
+# 1. Para cada producto (Sub_categoria y Ano), rankeamos los países del más barato (Rank=1) al más caro.
+#    Quitamos el argumento 'ascending = TRUE' porque no existe en la función rank().
+ranking_productos <- precio_por_pais %>%
+  group_by(Ano, Sub_categoria) %>%
+  mutate(Rank_del_Pais = rank(Precio_Unitario_Promedio, ties.method = "first")) %>%
+  ungroup()
+
+# 2. Ahora, sumamos los rankings que cada país obtuvo en los diferentes productos.
+#    El país con la suma total más baja es, en promedio, el más barato.
+ranking_final <- ranking_productos %>%
+  group_by(Pais) %>%
+  summarise(RankTotal = sum(Rank_del_Pais, na.rm = TRUE)) %>%
+  arrange(RankTotal) # Ordenamos del más barato al más caro
+
+# 3. Mostrar el resultado final
+print(ranking_final)
+
+
+```
+
+
+
+Luego de estudiar la base, agregamos variables que podrian explicar el modelo. Y la unimos a nuestra anterior base.
+
+```{r}
+
+# Cargarmos la base macro.
+macro <- read.csv("variables_macro.csv")
+
+# Unir bases por País y Año, con variables macros para pregunta 2.
+data_completa <- precio_por_pais %>%
+  inner_join(macro, by = c("Pais", "Ano"))
+
+View(data_completa)
+```
 #### Pregunta 2
 
 Usando los aprendizajes derivados de la exploración de datos, utilicen un enfoque de regresión lineal para examinar cuantitativamente qué factores determinan los distintos niveles de precios que pueden haber. En particular, consideren que nos interesa comparar niveles de precios entre países. 
@@ -337,6 +377,17 @@ a. (1.0 puntos) Propongan al menos dos especificaciones alternativas para el obj
 
 ```{r P2_a}
 #lm models
+
+
+# Especificación 1: Precio_Unitario_Promedio ~ Import_PIB + Arancel
+model1 <- lm(Precio_Unitario_Promedio ~ GDPpc + Arancel, data = data_completa)
+summary(model1)
+
+# Especificación 2: Precio_Unitario_Promedio ~ UrbGrow + LPI
+model2 <- lm(Precio_Unitario_Promedio ~ UrbGrow + LPI, data = data_completa)
+summary(model2)
+
+
 
 ```
 
