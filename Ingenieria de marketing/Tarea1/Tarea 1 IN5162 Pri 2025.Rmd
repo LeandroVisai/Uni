@@ -33,6 +33,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r P0 Corremos libreria}
 #Exploración de datos
 library(readxl)
+library(fixest)
 library(ggplot2)
 library(dplyr)
 library(kableExtra)
@@ -52,7 +53,7 @@ options(digits = 5)   # Número de dígitos a utilizar
 ```
 
 ```{r P0 Fijamos directorio}
-setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
+#setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
 ```
 
 ```{r P0 Leemos la base}
@@ -111,11 +112,11 @@ summary(datos_precios$Ano)
 summary(datos_precios$Mes)
 #Veamos datos
 
-# Primero defines los meses en orden
+# Primero se definen los meses en orden
 meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
 
-# Luego conviertes la columna "Mes" en factor ordenado y después a número
+# Luego se convierte la columna "Mes" en factor ordenado y después a número
 datos_precios$Mes <- match(datos_precios$Mes, meses)
 datos_precios$Mes <- as.numeric(datos_precios$Mes)
 
@@ -139,18 +140,18 @@ View(datos_precios_tc)
 ```{r}
 # --- Filtrado y conteo de Peso_Volumen ---
 # Contar productos menores a 0.1 y mayores/iguales
-conteo_menores <- datos_precios_tc %>% filter(Peso_Volumen < 0.1) %>% nrow()
-conteo_mayores <- datos_precios_tc %>% filter(Peso_Volumen >= 0.1) %>% nrow()
+#conteo_menores <- datos_precios_tc %>% filter(Peso_Volumen < 0.1) %>% nrow()
+#conteo_mayores <- datos_precios_tc %>% filter(Peso_Volumen >= 0.1) %>% nrow()
 
-cat("Productos con Peso_Volumen < 0.1:", conteo_menores, "\n")
-cat("Productos con Peso_Volumen >= 0.1:", conteo_mayores, "\n")
+#cat("Productos con Peso_Volumen < 0.1:", conteo_menores, "\n")
+#cat("Productos con Peso_Volumen >= 0.1:", conteo_mayores, "\n")
 
-# Eliminar los que son menores a 0.1, porque son solo el 8% de los datos
-datos_precios_tc <- datos_precios_tc %>% filter(Peso_Volumen >= 0.1)
+# Eliminar los que son menores a 0.1, porque son solo el 8% de los datos 
+#datos_precios_tc <- datos_precios_tc %>% filter(Peso_Volumen >= 0.1)
 
 # Revisar estructura final
-summary(datos_precios_tc$Peso_Volumen)
-View(datos_precios_tc)
+#summary(datos_precios_tc$Peso_Volumen)
+#View(datos_precios_tc)
 ```
 
 
@@ -194,6 +195,18 @@ View(precio_por_pais)
 ```
 
 
+```{r eliminamos subcategorías que están mal}
+# Eliminar subcategorías específicas
+precio_por_pais <- precio_por_pais %>%
+  filter(!Sub_categoria %in% c("Ajo", "Albahaca", "Oregano", 
+                               "Endulzante", "Canela", 
+                               "Laurel", "Chocolate", "Té","Te","Café","Dulces","Aceto"))
+
+# Revisar la base final
+View(precio_por_pais)
+```
+
+
 
 ## Desarrollo
 
@@ -202,30 +215,13 @@ Documenten acá el desarrollo de su tarea por pregunta.
 #### Pregunta 1
 
 (1.0 puntos) Exploren los datos para entender la distribución del precio de los abarrotes y ver qué variables podrían ayudar a explicar posibles diferencias en el nivel de precios entre países.
-```{r Exploración de datos}
 
 
-# 3. Generamos el mapa de calor (heatmap)
-ggplot(precio_por_pais, aes(x = Sub_categoria, y = Pais, fill = Precio_Unitario_Promedio)) +
-  geom_tile(color = "white") + # geom_tile() es la función para crear el heatmap
-  scale_fill_viridis_c(option = "plasma") + # Una paleta de colores más atractiva
-  labs(
-    title = "Mapa de Calor de Precios Unitarios Promedio",
-    subtitle = "Comparación de todas las Subcategorías entre todos los Países",
-    x = "Subcategoría de Producto",
-    y = "País",
-    fill = "Precio Promedio (USD)"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1) # Gira las etiquetas para que no se solapen
-  )
 
 
-```
 
 
-Notamos que, el mapa de calor nos hace pensar que por categoria, los datos tienen un precio parecido dentro de un mismo pais.
+
 
 
 
@@ -262,6 +258,23 @@ View(precio_por_categoria)
 
 
 
+```{r borramos las categorías que tienen precios malos para visualizar bien}
+# Eliminar categorías específicas
+precio_por_categoria <- datos_precios_tc %>%
+  group_by(Pais, Categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
+  filter(!Categoria %in% c("Especias, condimentos y caldos",
+                           "Azúcar, sal y sucedáneos",
+                           "Cafe y te",
+                           "Café y té",
+                           "Dulces y postres no congelados sin cereales",
+                           "Sopas"))
+
+# Revisar la base final
+View(precio_por_categoria)
+
+
+```
 
 
 ```{r}
@@ -302,7 +315,7 @@ ggplot(precio_categorias_comunes1, aes(x = Categoria, y = Precio_Unitario_Promed
   )
 
 ```
-
+Esto se hizo para entender una muestra, por ejemplo se ve que UK parece ser el más caro de los 3 y Colombia el más barato.
 
 ```{r}
 #Subimos el nivel de agregación, para usar solo 1 conjunto de productos y obtenemos promedio.
@@ -329,30 +342,33 @@ ggplot(precio_por_pais, aes(x = Pais, y = Precio_Unitario_Promedio)) +
   )
 ```
 
-Luego de ver visualmente la distribución de variables, podriamos estudiar el ranking de paises baratos/caros, usando un posible ranking.
+Luego de ver visualmente la distribución de variables, podriamos estudiar el ranking de paises baratos/caros, usando un ranking.Esto porque al promediar, se está sobreponderando a los productos más caros. Luego el ranking asigna un número del 1 al 7, donde 7 corresponde al país más caro.
 
 ```{r}
+# 1. Generar base con precios por producto (subcategoría)
+precio_por_pais <- datos_precios_tc %>%
+  group_by(Ano, Sub_categoria, Pais) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
+  ungroup()
 
-
-# 1. Para cada producto (Sub_categoria y Ano), rankeamos los países del más barato (Rank=1) al más caro.
-#    Quitamos el argumento 'ascending = TRUE' porque no existe en la función rank().
+# 2. Ranking por producto y año
 ranking_productos <- precio_por_pais %>%
   group_by(Ano, Sub_categoria) %>%
   mutate(Rank_del_Pais = rank(Precio_Unitario_Promedio, ties.method = "first")) %>%
   ungroup()
 
-# 2. Ahora, sumamos los rankings que cada país obtuvo en los diferentes productos.
-#    El país con la suma total más baja es, en promedio, el más barato.
+# 3. Ranking agregado por país
 ranking_final <- ranking_productos %>%
   group_by(Pais) %>%
   summarise(RankTotal = sum(Rank_del_Pais, na.rm = TRUE)) %>%
-  arrange(RankTotal) # Ordenamos del más barato al más caro
+  arrange(RankTotal)
 
-# 3. Mostrar el resultado final
+# 4. Resultado
 print(ranking_final)
-
-
 ```
+Este ranking se corresponde con la intuición y experiencia donde de forma absoluta, es más caro UK y más barato Colombia.
+
+
 
 
 
@@ -374,6 +390,324 @@ View(data_completa)
 Usando los aprendizajes derivados de la exploración de datos, utilicen un enfoque de regresión lineal para examinar cuantitativamente qué factores determinan los distintos niveles de precios que pueden haber. En particular, consideren que nos interesa comparar niveles de precios entre países. 
      
 a. (1.0 puntos) Propongan al menos dos especificaciones alternativas para el objetivo propuesto. Justifiquen muy brevemente por qué las variables explicativas que está incluyendo en el modelo tienen sentido desde el punto de vista del problema. Justifiquen además el nivel de agregación escogido y los índices considerados en el modelo.
+
+Primero proponemos una especificación solo con variables macro externas y haremos otra con variables de la base, como categoría por ejemplo. Esto dado que como son solo 7 países, se tiene muy poca varianza solo con las variables macro por país y para 2 años.
+
+```{r}
+# ============================
+# Modelo Macro con efectos fijos
+# ============================
+
+# Base de datos: precios por país-subcategoría-año
+macro <- read.csv("variables_macro.csv")
+
+precio_por_pais <- datos_precios_tc %>%
+  group_by(Ano, Sub_categoria, Pais) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
+  ungroup()
+
+# Unimos con macro
+data_macro <- precio_por_pais %>%
+  inner_join(macro, by = c("Pais", "Ano")) %>%
+  mutate(GDPpc_miles = GDPpc / 1000)
+
+# Estimamos con efectos fijos
+modelo_macro_fe <- feols(
+  Precio_Unitario_Promedio ~ GDPpc_miles + Arancel + UrbGrow +
+    LPI + Inflacion + Import_PIB + FoodImp | Sub_categoria + Ano,
+  data = data_macro
+)
+
+summary(modelo_macro_fe)
+
+  
+
+
+```
+
+```{r}
+# ============================
+# Modelo Micro con efectos fijos
+# ============================
+
+data_micro <- datos_precios_tc %>%
+  mutate(
+    MarcaPropia = as.factor(Marca_propia),
+    Promocion = as.factor(Promocion)
+  )
+
+modelo_micro_fe <- feols(
+  PrecioU_oferta_usd ~ MarcaPropia + Promocion + Cadena |
+    Categoria + Pais + Ano,
+  data = data_micro
+)
+
+summary(modelo_micro_fe)
+
+
+```
+
+
+```{r P2_a1}
+
+
+
+
+
+# ================================
+# 1. Especificación con variables macro
+# ================================
+macro <- read.csv("variables_macro.csv")
+
+# Unimos precios país-año con variables macro
+data_macro <- precio_por_pais %>%
+  inner_join(macro, by = c("Pais", "Ano")) %>%
+  mutate(GDPpc_miles = GDPpc / 1000)  # Escalamos PIB per cápita
+
+# Modelo 1: determinantes macroeconómicos
+modelo_macro <- lm(
+  Precio_Promedio_Pais ~ GDPpc_miles + Arancel + UrbGrow + 
+    LPI + Inflacion + Import_PIB + FoodImp,
+  data = data_macro
+)
+
+summary(modelo_macro)
+
+#De acá se puede ver que hace sentido pues a mayor arancel da mayor precio y de forma significativa
+#Así mismo con GDP
+
+
+# ================================
+# 2. Especificación con variables internas (categorías comunes)
+# ================================
+
+# 1. Construimos la base filtrando categorías comunes
+precio_por_categoria <- datos_precios_tc %>%
+  group_by(Pais, Ano, Categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
+  ungroup()
+
+precio_categorias_comunes <- precio_por_categoria %>%
+  group_by(Categoria, Ano) %>%
+  filter(n_distinct(Pais) == 7) %>%
+  ungroup()
+
+# 2. Pasamos a formato ancho
+precio_categorias_comunes_wide <- precio_categorias_comunes %>%
+  pivot_wider(names_from = Categoria, values_from = Precio_Unitario_Promedio)
+
+# 3. Unimos con la base país-año
+data_categorias <- precio_por_pais %>%
+  inner_join(precio_categorias_comunes_wide, by = c("Pais", "Ano"))
+
+# 4. Seleccionamos un subconjunto de categorías representativas
+vars_categorias <- c("Aguas",
+                     "Bebidas alcohólicas",
+                     "Frutas y vegetales",
+                     "Carne, aves y sucedáneos de la carne",
+                     "Productos lácteos y sucedáneos lácteos",
+                     "Granos, pasta y masas")
+
+# 5. Construimos la fórmula asegurando backticks
+fmla <- as.formula(
+  paste("Precio_Promedio_Pais ~",
+        paste(sprintf("`%s`", vars_categorias), collapse = " + "))
+)
+
+# 6. Modelo con variables internas (solo esas categorías)
+modelo_categorias <- lm(fmla, data = data_categorias)
+
+summary(modelo_categorias)
+
+
+# ================================
+# 3. Comparación de modelos
+# ================================
+library(modelsummary)
+
+modelsummary(
+  list(
+    "Macro (PIB, Aranceles...)" = modelo_macro,
+    "Categorías internas" = modelo_categorias
+  ),
+  stars = TRUE,
+  output = "markdown"
+)
+
+
+
+```
+
+
+
+```{r P2_a}
+
+#### Pregunta 2
+# Usando los aprendizajes derivados de la exploración de datos, 
+# utilicen un enfoque de regresión lineal para examinar cuantitativamente 
+# qué factores determinan los distintos niveles de precios que pueden haber.
+
+# ================================
+# 1. Especificación con variables macro
+# ================================
+
+# Base con unión de precios promedio y variables macro
+macro <- read.csv("variables_macro.csv")
+
+data_completa <- precio_por_pais %>%
+  inner_join(macro, by = c("Pais", "Ano"))
+
+# Modelo solo con determinantes macroeconómicos
+modelo_macro <- lm(
+  Precio_Unitario_Promedio ~ GDPpc + Arancel + UrbGrow + 
+    LPI + Inflacion + Import_PIB + FoodImp,
+  data = data_completa
+)
+
+summary(modelo_macro)
+
+
+# ================================
+# 2. Especificación con variables micro
+# ================================
+
+# Generamos una base más desagregada a nivel producto/cadena
+# Nota: ajusta la detección de "marca propia" según cómo esté en tu base
+library(stringr)
+
+data_micro <- datos_precios_tc %>%
+  mutate(MarcaPropia = ifelse(str_detect(Sub_categoria, "marca propia"), 1, 0)) %>%
+  select(Pais, Ano, Categoria, Sub_categoria, Cadena, MarcaPropia, PrecioU_oferta_usd)
+
+# Modelo con variables microeconómicas internas de la base
+modelo_micro <- lm(
+  PrecioU_oferta_usd ~ MarcaPropia + Categoria + Cadena + Pais,
+  data = data_micro
+)
+
+summary(modelo_micro)
+
+
+# ================================
+# 3. Comparación de modelos lado a lado
+# ================================
+#library(modelsummary)
+
+#modelsummary(
+ # list(
+    "Macro (PIB, Aranceles...)" = modelo_macro,
+    "Micro (Categoría, Marca, Cadena)" = modelo_micro
+ # ),
+#  stars = TRUE,      # Agregar significancia con asteriscos
+ # output = "markdown" # Puede ser "latex" si lo exportas a informe
+#)
+```
+
+
+```{r P2_b}
+# ================================
+# Selección automática de variables con LASSO (sin País como regresor)
+# ================================
+library(glmnet)
+library(dplyr)
+
+## ---- Modelo Macro ----
+data_macro_lasso <- data_completa %>%
+  select(Precio_Unitario_Promedio, GDPpc, Arancel, UrbGrow, 
+         LPI, Inflacion, Import_PIB, FoodImp) %>%
+  na.omit()
+
+y_macro <- data_macro_lasso$Precio_Unitario_Promedio
+X_macro <- model.matrix(Precio_Unitario_Promedio ~ ., data = data_macro_lasso)[, -1]
+
+cv_macro <- cv.glmnet(X_macro, y_macro, alpha = 1, standardize = TRUE)
+
+cat("Lambda óptimo modelo macro:", cv_macro$lambda.min, "\n")
+
+coef_macro <- coef(cv_macro, s = "lambda.min")
+cat("Variables seleccionadas (macro):\n")
+print(rownames(coef_macro)[which(coef_macro != 0)])
+
+
+## ---- Modelo Micro (sin País) ----
+data_micro_lasso <- data_micro %>%
+  select(PrecioU_oferta_usd, MarcaPropia, Categoria, Cadena) %>%  # <- quitamos Pais
+  na.omit()
+
+y_micro <- data_micro_lasso$PrecioU_oferta_usd
+X_micro <- model.matrix(PrecioU_oferta_usd ~ ., data = data_micro_lasso)[, -1]
+
+cv_micro <- cv.glmnet(X_micro, y_micro, alpha = 1, standardize = TRUE)
+
+cat("Lambda óptimo modelo micro:", cv_micro$lambda.min, "\n")
+
+coef_micro <- coef(cv_micro, s = "lambda.min")
+cat("Variables seleccionadas (micro):\n")
+print(rownames(coef_micro)[which(coef_micro != 0)])
+
+```
+
+```{r P2_b otra forma}
+# ================================
+# Selección automática con Stepwise + Ridge
+# ================================
+library(glmnet)
+library(MASS)   # <- AQUÍ está stepAIC()
+
+## ---- Modelo Macro ----
+# 1. Preparamos datos
+data_macro_ridge <- data_completa %>%
+  dplyr::select(Precio_Unitario_Promedio, GDPpc, Arancel, UrbGrow, 
+                LPI, Inflacion, Import_PIB, FoodImp) %>%
+  na.omit()
+
+# 2. Ridge base con glmnet
+y_macro <- data_macro_ridge$Precio_Unitario_Promedio
+X_macro <- model.matrix(Precio_Unitario_Promedio ~ ., data = data_macro_ridge)[, -1]
+
+cv_ridge_macro <- cv.glmnet(X_macro, y_macro, alpha = 0, standardize = TRUE)
+cat("Lambda óptimo modelo macro (Ridge):", cv_ridge_macro$lambda.min, "\n")
+
+# 3. Stepwise (AIC) sobre modelo OLS
+modelo_macro_full <- lm(Precio_Unitario_Promedio ~ GDPpc + Arancel + UrbGrow +
+                          LPI + Inflacion + Import_PIB + FoodImp,
+                        data = data_macro_ridge)
+
+step_macro <- stepAIC(modelo_macro_full, direction = "both", trace = FALSE)
+
+summary(step_macro)
+cat("Variables seleccionadas en modelo macro (Stepwise):\n")
+print(names(coef(step_macro))[-1])  # quitamos intercepto
+
+
+## ---- Modelo Micro ----
+# 1. Preparamos datos
+data_micro_ridge <- data_micro %>%
+  dplyr::select(PrecioU_oferta_usd, MarcaPropia, Categoria, Cadena) %>%
+  na.omit()
+
+# 2. Ridge base
+y_micro <- data_micro_ridge$PrecioU_oferta_usd
+X_micro <- model.matrix(PrecioU_oferta_usd ~ ., data = data_micro_ridge)[, -1]
+
+cv_ridge_micro <- cv.glmnet(X_micro, y_micro, alpha = 0, standardize = TRUE)
+cat("Lambda óptimo modelo micro (Ridge):", cv_ridge_micro$lambda.min, "\n")
+
+# 3. Stepwise (AIC) sobre modelo OLS
+modelo_micro_full <- lm(PrecioU_oferta_usd ~ MarcaPropia + Categoria + Cadena,
+                        data = data_micro_ridge)
+
+step_micro <- stepAIC(modelo_micro_full, direction = "both", trace = FALSE)
+
+summary(step_micro)
+cat("Variables seleccionadas en modelo micro (Stepwise):\n")
+print(names(coef(step_micro))[-1])
+
+
+
+
+
+```
 
 ```{r P2_a}
 #lm models
@@ -403,6 +737,112 @@ b. (1.0 puntos) Sobre los dos modelos planteados en la parte anterior, apliquen 
 
 ```{r P3}
 #Machine learning models
+
+set.seed(851)
+
+# 0) Verificación
+req_cols <- c("Pais","Ano","Mes","Sub_categoria","Precio_Unitario_Promedio",
+              "GDPpc","Arancel","UrbGrow","LPI","Inflacion","Import_PIB","FoodImp")
+faltan <- setdiff(req_cols, names(data_completa))
+if (length(faltan) > 0) stop(paste("Faltan columnas en data_completa:", paste(faltan, collapse=", ")))
+````
+
+
+```{r}
+
+# 1) Split temporal: entrenamiento 2021, test 2022
+train_df <- subset(data_completa, Ano == 2021)
+test_df  <- subset(data_completa, Ano == 2022)
+
+# 2) Fórmulas
+fml_lin <- Precio_Unitario_Promedio ~ GDPpc + Arancel + UrbGrow + LPI + Inflacion + Import_PIB + FoodImp
+fml_int <- as.formula("Precio_Unitario_Promedio ~ (GDPpc + Arancel + UrbGrow + LPI + Inflacion + Import_PIB + FoodImp)^2")
+
+# 3) Control CV
+ctrl <- trainControl(method = "cv", number = 10)
+
+```
+
+
+```{r}
+
+# 4) Modelos
+# 4.1 LM baseline y stepwise
+lm_lin  <- lm(fml_lin, data = train_df)
+lm_step <- step(lm(fml_int, data = train_df), direction = "backward", trace = 0)
+
+# 4.2 MARS
+mars_fit <- train(
+  fml_int,
+  data = train_df,
+  method = "earth",
+  trControl = ctrl,
+  preProcess = c("center","scale"),
+  tuneGrid = expand.grid(degree = c(1,2), nprune = 5:9)
+)
+
+# 4.3 Random Forest
+rf_fit <- train(
+  fml_int,
+  data = train_df,
+  method = "rf",
+  trControl = ctrl,
+  preProcess = c("center","scale"),
+  tuneGrid = expand.grid(mtry = 2:6),
+  importance = TRUE
+)
+
+# 5) Predicciones sobre 2022
+pred_lm_lin  <- predict(lm_lin,  newdata = test_df)
+pred_lm_step <- predict(lm_step, newdata = test_df)
+pred_mars    <- predict(mars_fit, newdata = test_df)
+pred_rf      <- predict(rf_fit,   newdata = test_df)
+
+# 6) Métricas de desempeño (comparar qué modelo predice mejor 2022)
+rmse <- function(y, yhat) sqrt(mean((y - yhat)^2, na.rm = TRUE))
+mae  <- function(y, yhat) mean(abs(y - yhat), na.rm = TRUE)
+mse  <- function(y, yhat) mean((y - yhat)^2, na.rm = TRUE)
+
+y_test <- test_df$Precio_Unitario_Promedio
+
+metrics <- data.frame(
+  Modelo = c("LM (lineal)", "LM (stepwise)", "MARS", "RandomForest"),
+  RMSE   = c(rmse(y_test, pred_lm_lin),
+             rmse(y_test, pred_lm_step),
+             rmse(y_test, pred_mars),
+             rmse(y_test, pred_rf)),
+  MAE    = c(mae (y_test, pred_lm_lin),
+             mae (y_test, pred_lm_step),
+             mae (y_test, pred_mars),
+             mae (y_test, pred_rf)),
+  MSE    = c(mse (y_test, pred_lm_lin),
+             mse (y_test, pred_lm_step),
+             mse (y_test, pred_mars),
+             mse (y_test, pred_rf))
+)
+print(metrics)
+
+# 7) Ejemplo de predicción puntual (Chile, feb 2022, Cebolla)
+caso <- subset(test_df, Pais=="Chile" & Ano==2022 & Mes==2 & Sub_categoria=="Cebolla")
+if (nrow(caso) == 0) {
+  warning("No hay registros para (Chile, 2022-02, Cebolla) en test_df.")
+} else {
+  needed <- c("GDPpc","Arancel","UrbGrow","LPI","Inflacion","Import_PIB","FoodImp")
+  if (!all(complete.cases(caso[, needed]))) {
+    warning("El caso específico tiene NAs en predictoras; considera imputar valores.")
+  }
+  pred_caso <- data.frame(
+    Modelo = c("LM (lineal)","LM (stepwise)","MARS","RandomForest"),
+    Prediccion = c(
+      predict(lm_lin,   newdata = caso),
+      predict(lm_step,  newdata = caso),
+      predict(mars_fit, newdata = caso),
+      predict(rf_fit,   newdata = caso)
+    )
+  )
+  print(pred_caso)
+}
+
 ```
 
 #### Pregunta 4
