@@ -559,6 +559,9 @@ print(pred_puntual)
 
 ```
 
+
+
+
 #### Pregunta 4
 En vez de pedir que generen una canasta para cada mes año y pais, sugeriría que eligan 3 canasta con al menos 5 productos de su elección y pronostiquen el precio para todos los paises en una fecha en particular. Asi tenemos más variación en las respuestas y dificultamos la copia.
 
@@ -566,6 +569,56 @@ a. (1.0 puntos) Elaboren tres canastas de abarrotes con al menos cinco productos
 
 ```{r P4a}
 
+# Asumimos que la lista de modelos 'model_list' (con modelo_rf) ya existe
+# y fue entrenada con el script anterior.
+
+# --- 1. Definir las canastas de abarrotes ---
+canasta_basica <- c("Arroz", "Fideos", "Aceite", "Panes", "Huevos", "Leches")
+canasta_carnes_verduras <- c("Carne roja", "Carne blanca", "Pescados", "Tomates", "Lechuga", "Papas")
+canasta_aseo_hogar <- c("Detergentes", "Cloro", "Lavalozas", "Limpia pisos", "Aromatizador")
+
+# Creamos un dataframe con la definición de las canastas para usarlo después
+definicion_canastas <- data.frame(
+  Sub_categoria = c(canasta_basica, canasta_carnes_verduras, canasta_aseo_hogar),
+  Canasta = rep(c("Básica", "Carnes y Verduras", "Aseo del Hogar"), 
+                times = c(length(canasta_basica), length(canasta_carnes_verduras), length(canasta_aseo_hogar)))
+)
+
+# --- 2. Crear el escenario para la predicción ---
+# Vamos a predecir los precios para Marzo de 2022 en todos los países.
+escenario_prediccion <- expand.grid(
+  Sub_categoria = definicion_canastas$Sub_categoria,
+  Pais = levels(train_df$Pais), # Usamos los niveles del set de entrenamiento
+  Ano = 2022,
+  Mes = 3
+) %>%
+  distinct()
+
+# --- 3. Pronosticar precios usando el mejor modelo (Random Forest) ---
+escenario_prediccion$Precio_Predicho_USD <- predict(model_list$RF, newdata = escenario_prediccion)
+
+# --- 4. Calcular el costo total de cada canasta por país ---
+costo_final_canastas <- escenario_prediccion %>%
+  left_join(definicion_canastas, by = "Sub_categoria") %>%
+  group_by(Pais, Canasta) %>%
+  summarise(Costo_Total_USD = sum(Precio_Predicho_USD), .groups = 'drop')
+
+# --- 5. Presentar resultados y comparar ---
+cat("Pronóstico del Costo Total por Canasta y País (en USD):\n")
+print(costo_final_canastas)
+
+# --- (Opcional) Graficar para una comparación visual ---
+ggplot(costo_final_canastas, aes(x = reorder(Pais, Costo_Total_USD), y = Costo_Total_USD, fill = Pais)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ Canasta, scales = "free_x") +
+  coord_flip() +
+  labs(
+    title = "Costo Pronosticado de Canastas de Abarrotes por País (Marzo 2022)",
+    x = "País",
+    y = "Costo Total Estimado (USD)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 ```
 
@@ -594,8 +647,7 @@ Documenta acá cualquier otro adicional que consideres útil tener de referencia
 Todos los participantes del grupo de trabajo declaran que su participación queda bien reflejada en la siguiente tabla.  
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
-library(dplyr)
-library(kableExtra)
+
 
 roles <- data.frame(
   integrantes = c("Integrante 1", "Integrante 2", "Integrante 3"),
