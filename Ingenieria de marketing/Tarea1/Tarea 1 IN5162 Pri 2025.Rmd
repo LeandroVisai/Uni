@@ -36,6 +36,8 @@ library(readxl)
 library(fixest)
 library(ggplot2)
 library(dplyr)
+library(knitr)
+library(glmnet)
 library(kableExtra)
 library(modelsummary)
 library(caret)
@@ -393,6 +395,8 @@ a. (1.0 puntos) Propongan al menos dos especificaciones alternativas para el obj
 
 Primero proponemos una especificación solo con variables macro externas y haremos otra con variables de la base, como categoría por ejemplo. Esto dado que como son solo 7 países, se tiene muy poca varianza solo con las variables macro por país y para 2 años.
 
+El nivel de agregación escogido es el precio por subcategoría dado que por ejemplo leche de chocolate o normal es indiferente y como se vio antes tienen precios similares, en un país determinado y en un tiempo determinado. Por esta razón se agregan efectos fijos por estas 3 variables.
+
 ```{r}
 # ============================
 # Modelo Macro con efectos fijos
@@ -448,136 +452,75 @@ summary(modelo_micro_fe)
 ```
 
 
+Como comentario, se filtra para que no aparezcan categoría, país, año porque son efectos fijos, no regresores. Por tanto, cuando Lasso muestra los regresores que seleccionó, no debe incluirlos.
 
 
 
 
-
-```{r P2_b}
-# ================================
-# Selección automática de variables con LASSO (sin País como regresor)
-# ================================
-library(glmnet)
-library(dplyr)
-
-## ---- Modelo Macro ----
-data_macro_lasso <- data_completa %>%
-  select(Precio_Unitario_Promedio, GDPpc, Arancel, UrbGrow, 
-         LPI, Inflacion, Import_PIB, FoodImp) %>%
-  na.omit()
-
-y_macro <- data_macro_lasso$Precio_Unitario_Promedio
-X_macro <- model.matrix(Precio_Unitario_Promedio ~ ., data = data_macro_lasso)[, -1]
-
-cv_macro <- cv.glmnet(X_macro, y_macro, alpha = 1, standardize = TRUE)
-
-cat("Lambda óptimo modelo macro:", cv_macro$lambda.min, "\n")
-
-coef_macro <- coef(cv_macro, s = "lambda.min")
-cat("Variables seleccionadas (macro):\n")
-print(rownames(coef_macro)[which(coef_macro != 0)])
-
-
-## ---- Modelo Micro (sin País) ----
-data_micro_lasso <- data_micro %>%
-  select(PrecioU_oferta_usd, MarcaPropia, Categoria, Cadena) %>%  # <- quitamos Pais
-  na.omit()
-
-y_micro <- data_micro_lasso$PrecioU_oferta_usd
-X_micro <- model.matrix(PrecioU_oferta_usd ~ ., data = data_micro_lasso)[, -1]
-
-cv_micro <- cv.glmnet(X_micro, y_micro, alpha = 1, standardize = TRUE)
-
-cat("Lambda óptimo modelo micro:", cv_micro$lambda.min, "\n")
-
-coef_micro <- coef(cv_micro, s = "lambda.min")
-cat("Variables seleccionadas (micro):\n")
-print(rownames(coef_micro)[which(coef_micro != 0)])
-
-```
-
-```{r P2_b otra forma}
-# ================================
-# Selección automática con Stepwise + Ridge
-# ================================
-library(glmnet)
-library(MASS)   # <- AQUÍ está stepAIC()
-
-## ---- Modelo Macro ----
-# 1. Preparamos datos
-data_macro_ridge <- data_completa %>%
-  dplyr::select(Precio_Unitario_Promedio, GDPpc, Arancel, UrbGrow, 
-                LPI, Inflacion, Import_PIB, FoodImp) %>%
-  na.omit()
-
-# 2. Ridge base con glmnet
-y_macro <- data_macro_ridge$Precio_Unitario_Promedio
-X_macro <- model.matrix(Precio_Unitario_Promedio ~ ., data = data_macro_ridge)[, -1]
-
-cv_ridge_macro <- cv.glmnet(X_macro, y_macro, alpha = 0, standardize = TRUE)
-cat("Lambda óptimo modelo macro (Ridge):", cv_ridge_macro$lambda.min, "\n")
-
-# 3. Stepwise (AIC) sobre modelo OLS
-modelo_macro_full <- lm(Precio_Unitario_Promedio ~ GDPpc + Arancel + UrbGrow +
-                          LPI + Inflacion + Import_PIB + FoodImp,
-                        data = data_macro_ridge)
-
-step_macro <- stepAIC(modelo_macro_full, direction = "both", trace = FALSE)
-
-summary(step_macro)
-cat("Variables seleccionadas en modelo macro (Stepwise):\n")
-print(names(coef(step_macro))[-1])  # quitamos intercepto
-
-
-## ---- Modelo Micro ----
-# 1. Preparamos datos
-data_micro_ridge <- data_micro %>%
-  dplyr::select(PrecioU_oferta_usd, MarcaPropia, Categoria, Cadena) %>%
-  na.omit()
-
-# 2. Ridge base
-y_micro <- data_micro_ridge$PrecioU_oferta_usd
-X_micro <- model.matrix(PrecioU_oferta_usd ~ ., data = data_micro_ridge)[, -1]
-
-cv_ridge_micro <- cv.glmnet(X_micro, y_micro, alpha = 0, standardize = TRUE)
-cat("Lambda óptimo modelo micro (Ridge):", cv_ridge_micro$lambda.min, "\n")
-
-# 3. Stepwise (AIC) sobre modelo OLS
-modelo_micro_full <- lm(PrecioU_oferta_usd ~ MarcaPropia + Categoria + Cadena,
-                        data = data_micro_ridge)
-
-step_micro <- stepAIC(modelo_micro_full, direction = "both", trace = FALSE)
-
-summary(step_micro)
-cat("Variables seleccionadas en modelo micro (Stepwise):\n")
-print(names(coef(step_micro))[-1])
+  
 
 
 
 
-
-```
-
-```{r P2_a}
-#lm models
-
-
-# Especificación 1: Precio_Unitario_Promedio ~ Import_PIB + Arancel
-model1 <- lm(Precio_Unitario_Promedio ~ GDPpc + Arancel, data = data_completa)
-summary(model1)
-
-# Especificación 2: Precio_Unitario_Promedio ~ UrbGrow + LPI
-model2 <- lm(Precio_Unitario_Promedio ~ UrbGrow + LPI, data = data_completa)
-summary(model2)
-
-
-
-```
 
 b. (1.0 puntos) Sobre los dos modelos planteados en la parte anterior, apliquen algún método de selección automática de variables aprendido en clases y compare con respecto a los resultados anteriores. Deben indicar cuáles variables descartan.
 
 ```{r P2_b}
 #automatic variable selection
+
+#1. Construcción de la base filtrando NA
+data_macro_lasso <- data_macro %>%
+dplyr::select(Precio_Unitario_Promedio, GDPpc_miles, Arancel, UrbGrow, LPI, Inflacion, Import_PIB, FoodImp) %>%
+na.omit()
+# 2. Variable dependiente
+y_macro <- as.matrix(data_macro_lasso$Precio_Unitario_Promedio) 
+# 3. Matriz de regresores (incluye efectos fijos como dummies)
+X_macro <- model.matrix( Precio_Unitario_Promedio ~ GDPpc_miles + Arancel + UrbGrow + LPI + Inflacion + Import_PIB + FoodImp , data = data_macro_lasso )[, -1] # quitamos el intercepto 
+# 4. Estimación con LASSO y validación cruzada
+set.seed(123) # para replicabilidad 
+cv_macro_lasso <- cv.glmnet(X_macro, y_macro, alpha = 1, standardize = TRUE)
+# 5. Lambda óptimo elegido por CV 
+cat("Lambda óptimo:", cv_macro_lasso$lambda.min, "\n")
+# 6. Coeficientes del modelo
+coef_macro <- coef(cv_macro_lasso, s = "lambda.min")
+# 7. Variables seleccionadas(coef distinto de 0) 
+selected_vars <- rownames(coef_macro)[which(coef_macro != 0)] 
+cat("Variables seleccionadas por LASSO:\n")
+print(selected_vars)
+
+ # 1. Construcción de la base filtrando NA
+  data_micro_lasso <- data_micro %>%
+    dplyr::select(PrecioU_oferta_usd, MarcaPropia, Promocion, Cadena, Categoria, Pais, Ano) %>%
+    na.omit()
+
+  # 2. Variable dependiente
+  y_micro <- as.matrix(data_micro_lasso$PrecioU_oferta_usd)
+
+  # 3. Matriz de regresores (incluye efectos fijos como dummies)
+  X_micro <- model.matrix(
+    PrecioU_oferta_usd ~ MarcaPropia + Promocion + Cadena +
+      factor(Categoria) + factor(Pais) + factor(Ano),
+    data = data_micro_lasso
+  )[, -1]   # quitamos el intercepto
+
+  # 4. Estimación con LASSO y validación cruzada
+  set.seed(123)  # para replicabilidad
+  cv_micro_lasso <- cv.glmnet(X_micro, y_micro, alpha = 1, standardize = TRUE)
+
+  # 5. Lambda óptimo elegido por CV
+  cat("Lambda óptimo:", cv_micro_lasso$lambda.min, "\n")
+
+  # 6. Coeficientes del modelo
+  coef_micro <- coef(cv_micro_lasso, s = "lambda.min")
+  
+# 7. Variables seleccionadas (coef distinto de 0)
+selected_vars_micro <- rownames(coef_micro)[which(coef_micro != 0)]
+ # Filtrar: eliminar intercepto, dummies de Categoria, Pais y Ano
+selected_vars_micro_clean <- selected_vars_micro[!grepl("Intercept|Categoria|Pais|Ano", selected_vars_micro)]
+
+cat("Variables seleccionadas por LASSO (solo micro, sin FE):\n")
+print(selected_vars_micro_clean)
+
 ```
 
 #### Pregunta 3
