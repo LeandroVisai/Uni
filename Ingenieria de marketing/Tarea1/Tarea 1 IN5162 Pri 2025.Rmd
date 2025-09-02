@@ -55,7 +55,7 @@ options(digits = 5)   # Número de dígitos a utilizar
 ```
 
 ```{r P0 Fijamos directorio}
-#setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea1")  # fijando el directorio de trabajo
 ```
 
 ```{r P0 Leemos la base}
@@ -63,16 +63,54 @@ options(digits = 5)   # Número de dígitos a utilizar
 # Leemos el archivo CSV.
 datos_precios = read_excel("Canasta_de_productos.xlsx")
 
-
 # Cargamos la base tipo de cambio.
 Tipo_cambio <- read.csv("Tipo_cambio.csv")
 
+# Cargamos la base de variables macros utilizadas.
+macro <- read.csv("variables_macro.csv")
+
+
+
 head(datos_precios)
 head(Tipo_cambio)
+head(macro)
+
 ```
 
+Realizamos ajustes a la base de precios.
 
-```{r}
+```{r P0 Transformamos la base}
+
+# Renombramos la columna con _ para que sea intuitivo al momento de trabajar las bases.
+
+datos_precios <- datos_precios %>% rename(Sub_categoria = `Sub-categoria`)
+
+# Transformamos los años a numerico.
+datos_precios$Ano <- as.numeric(datos_precios$Ano)
+
+# Creamos una variable que se llame precio final, para explorar si existen cambios en cuanto a las ofertas que ofrecen las cadenas de supermercados.
+
+datos_precios <- datos_precios %>%
+  mutate(Precio_Final = ifelse(!is.na(Precio_Oferta) & Promocion == 1, Precio_Oferta, Precio_Normal))
+
+#Y eliminamos precio oferta, ya que no lo necesitamos con la nueva variable
+datos_precios <- datos_precios %>% select(-Precio_Oferta)
+
+# Primero se definen los meses en orden
+meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+           "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+
+# Luego se convierte la columna "Mes" en factor ordenado y después a número.
+datos_precios$Mes <- match(datos_precios$Mes, meses)
+datos_precios$Mes <- as.numeric(datos_precios$Mes)
+
+#print(datos_precios$Mes) Corroboramos.
+````
+
+
+Ajustamos las base tipo de cambio para unirla con la de precios.
+
+```{r Uniendo base precios con tipo de cambio}
 #Pasar a formato largo (de columnas de países a columna Pais + TipoCambio)
 Tipo_Cambio <- Tipo_cambio %>%
   pivot_longer(
@@ -81,51 +119,8 @@ Tipo_Cambio <- Tipo_cambio %>%
     values_to = "TipoCambio"
   )
 
-View(Tipo_Cambio)
+#View(Tipo_Cambio) #Vemos como ordenamos los datos.
 
-```
-
-
-
-```{r P0 Transformamos la base}
-
-#Cambiamos Sub-categoria por Sub_categoria
-
-# Renombramos únicamente la columna que nos falta
-datos_precios <- datos_precios %>%
-  rename(Sub_categoria = `Sub-categoria`)
-
-# Creamos una variable que se llame precio final, para explorar si existen cambios en cuanto a las ofertas que ofrecen las cadenas de supermercados
-
-datos_precios <- datos_precios %>%
-  mutate(Precio_Final = ifelse(!is.na(Precio_Oferta) & Promocion == 1, Precio_Oferta, Precio_Normal))
-
-#Y eliminamos precio oferta, ya que no lo necesitamos con la nueva variable
-datos_precios <- datos_precios %>%
-  select(-Precio_Oferta)
-
-str(datos_precios)
-summary(datos_precios)
-
-
-#Numerica para año
-datos_precios$Ano <- as.numeric(datos_precios$Ano)
-summary(datos_precios$Ano)
-summary(datos_precios$Mes)
-#Veamos datos
-
-# Primero se definen los meses en orden
-meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-           "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
-
-# Luego se convierte la columna "Mes" en factor ordenado y después a número
-datos_precios$Mes <- match(datos_precios$Mes, meses)
-datos_precios$Mes <- as.numeric(datos_precios$Mes)
-
-print(datos_precios$Mes)
-```
-
-```{r}
 #Unir con la base de precios (df_precios)
 datos_precios_tc <- datos_precios %>%
   left_join(Tipo_Cambio, by = c("Pais", "Ano", "Mes")) %>%
@@ -134,11 +129,24 @@ datos_precios_tc <- datos_precios %>%
     Precio_Final_usd  = Precio_Final  * TipoCambio
   )
 
-View(datos_precios_tc)
+#ademas agregamos precio unitario, para considerar el precio por volumen.
+datos_precios_tc <- datos_precios_tc %>%
+  mutate(PrecioU_oferta_usd = Precio_Final_usd/Peso_Volumen, PrecioU_Normal_usd = Precio_Normal_usd/Peso_Volumen)
+
+#View(datos_precios_tc) #Veamos como quedaron los datos.
+
+#Limpiamos las columnas que no utilizaremos
+
+datos_precios_tc <- datos_precios_tc %>%
+  select(-Date,-Precio_Final,-Precio_Normal,-TipoCambio,-Precio_Final_usd,-Precio_Normal_usd,-Peso_Volumen)
+
+#View(datos_precios_tc) # Resultado final
 
 ```
 
 
+
+## Posiblemente eliminemos esta celda
 ```{r}
 # --- Filtrado y conteo de Peso_Volumen ---
 # Contar productos menores a 0.1 y mayores/iguales
@@ -157,58 +165,78 @@ View(datos_precios_tc)
 ```
 
 
-```{r}
-
-#ademas agregamos precio unitario, para considerar el precio por volumen.
-datos_precios_tc <- datos_precios_tc %>%
-  mutate(PrecioU_oferta_usd = Precio_Final_usd/Peso_Volumen, PrecioU_Normal_usd = Precio_Normal_usd/Peso_Volumen)
-
-
-View(datos_precios_tc)
-```
-
-```{r}
-
-datos_precios_tc <- datos_precios_tc %>%
-  select(-Date,-Precio_Final,-Precio_Normal,-TipoCambio,-Precio_Final_usd,-Precio_Normal_usd,-Peso_Volumen)
-
-View(datos_precios_tc)
-
-```
-
-
 Ademas no todas las columnas son importantes, no podemos comparar el precio de la sal, azucar y endulzante por ejemplo. Para esto debemos agrupar los productos por el tipo de producto, es decir todas las azucar que se venden en chile se deben agrupar en alguna unica.
 
-Por lo que, hacemos un group by y calculamos el promedio:
-
-```{r agrupamos por sub_categoria, Pais y Cadena}
-#precio_por_cadena <- datos_precios_tc %>% group_by(Pais,Ano,Mes, Cadena, Sub_categoria) %>%
-#  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) #%>%
-  #ungroup() # Es una buena práctica desagrupar al final
-#View(precio_por_cadena)
-```
+Por lo que, hacemos un group by para subcategoria y categoria, calculamos el promedio y exploramos la base para la pregunta 1:
 
 ```{r agrupamos por sub_categoria Y Pais}
-precio_por_pais <- datos_precios_tc %>%
+precio_por_subcategoria <- datos_precios_tc %>%
   group_by(Ano, Mes, Pais, Sub_categoria) %>%
   summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
-  #ungroup() # Es una buena práctica desagrupar al final
-View(precio_por_pais)
+
+#Subimos el nivel de agregación, para usar solo categoria.
+precio_por_categoria <- datos_precios_tc %>%
+  group_by(Pais, Categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
+
+#Subimos el nivel de agregación, para usar solo 1 conjunto de productos y obtenemos promedio.
+precio_por_pais <- datos_precios_tc %>%
+  group_by(Pais) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
+
 ```
 
+Existen subcategorias, que en verdad no nos importan tanto, y nos mueven algunos precios en exceso debido a su peso minimo.
 
-```{r eliminamos subcategorías que están mal}
+```{r eliminamos subcategorías o categorias que están mal}
 # Eliminar subcategorías específicas
-precio_por_pais <- precio_por_pais %>%
+precio_por_subcategoria <- precio_por_subcategoria %>%
   filter(!Sub_categoria %in% c("Ajo", "Albahaca", "Oregano", 
                                "Endulzante", "Canela", 
                                "Laurel", "Chocolate", "Té","Te","Café","Dulces","Aceto"))
 
-# Revisar la base final
-View(precio_por_pais)
+
+# Eliminar categorías específicas
+precio_por_categoria <- precio_por_categoria %>%
+  filter(!Categoria %in% c("Especias, condimentos y caldos",
+                           "Azúcar, sal y sucedáneos",
+                           "Cafe y te",
+                           "Café y té",
+                           "Dulces y postres no congelados sin cereales",
+                           "Sopas"))
+
 ```
 
+Ademas debemos asegurarnos que las mismas categorias y subcategorias tienen que estar para todos los paises.
 
+```{r}
+
+# Filtramos directamente, manteniendo solo las categorías y subcategorias que aparecen en todos los paises.
+
+precio_por_subcategoria <- precio_por_subcategoria %>%
+  group_by(Sub_categoria) %>%
+  filter(n_distinct(Pais) == 7) %>%
+  ungroup()
+
+precio_por_categoria <- precio_por_categoria %>%
+  group_by(Categoria) %>%
+  filter(n_distinct(Pais) == 7) %>%
+  ungroup()
+
+```
+
+Luego de estudiar la base, agregamos variables que podrian explicar el modelo. Y la unimos a nuestra anterior base.
+
+```{r Unimos la base de subcategoria con los datos micro}
+
+# Unir bases con micro para pregunta 2.
+data_micro <- datos_precios_tc %>%
+  mutate(
+    MarcaPropia = as.factor(Marca_propia),
+    Promocion = as.factor(Promocion)
+  )
+
+```
 
 ## Desarrollo
 
@@ -221,17 +249,11 @@ Documenten acá el desarrollo de su tarea por pregunta.
 
 
 
-
-
-
-
-
-
 ```{r P1}
 #Exploración de datos
 
 # Generamos el gráfico de dispersión
-ggplot(precio_por_pais, aes(x = Sub_categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+ggplot(precio_por_subcategoria, aes(x = Sub_categoria, y = Precio_Unitario_Promedio, color = Pais)) +
   geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
   labs(
     title = "Dispersión de Precios Promedio por Subcategoría y País",
@@ -247,50 +269,9 @@ ggplot(precio_por_pais, aes(x = Sub_categoria, y = Precio_Unitario_Promedio, col
 ```
 
 
-```{r}
-
-#Subimos el nivel de agregación, para usar solo categoria.
-precio_por_categoria <- datos_precios_tc %>%
-  group_by(Pais, Categoria) %>%
-  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
-  #ungroup() # Es una buena práctica desagrupar al final
-View(precio_por_categoria)
-
-```
 
 
 
-```{r borramos las categorías que tienen precios malos para visualizar bien}
-# Eliminar categorías específicas
-precio_por_categoria <- datos_precios_tc %>%
-  group_by(Pais, Categoria) %>%
-  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
-  filter(!Categoria %in% c("Especias, condimentos y caldos",
-                           "Azúcar, sal y sucedáneos",
-                           "Cafe y te",
-                           "Café y té",
-                           "Dulces y postres no congelados sin cereales",
-                           "Sopas"))
-
-# Revisar la base final
-View(precio_por_categoria)
-
-
-```
-
-
-```{r}
-
-# Filtramos directamente, manteniendo solo las categorías que aparecen en todos los paises.
-# Esta es la forma más directa de hacerlo.
-precio_categorias_comunes <- precio_por_categoria %>%
-  group_by(Categoria) %>%
-  filter(n_distinct(Pais) == 7) %>%
-  ungroup()
-
-# Verificamos el resultado para confirmar que solo tenemos
-View(precio_categorias_comunes)
-```
 
 
 Exploramos solo por un conjunto de productos.
@@ -298,11 +279,11 @@ Exploramos solo por un conjunto de productos.
 ```{r}
 
 #Mini filtro por algunos paises.
-precio_categorias_comunes1 <- precio_categorias_comunes %>%
+precio_categorias_comunes <- precio_por_categoria %>%
   filter(Pais %in% c("Perú", "Colombia", "UK"))
 
 #Graficamos.
-ggplot(precio_categorias_comunes1, aes(x = Categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+ggplot(precio_categorias_comunes, aes(x = Categoria, y = Precio_Unitario_Promedio, color = Pais)) +
   geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
   labs(
     title = "Dispersión de Precios Promedio por Subcategoría y País",
@@ -317,16 +298,10 @@ ggplot(precio_categorias_comunes1, aes(x = Categoria, y = Precio_Unitario_Promed
   )
 
 ```
+
 Esto se hizo para entender una muestra, por ejemplo se ve que UK parece ser el más caro de los 3 y Colombia el más barato.
 
 ```{r}
-#Subimos el nivel de agregación, para usar solo 1 conjunto de productos y obtenemos promedio.
-precio_por_pais <- datos_precios_tc %>%
-  group_by(Pais) %>%
-  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))# %>%
-  #ungroup() # Es una buena práctica desagrupar al final
-View(precio_por_pais)
-
 
 #Graficamos promediando todos los productos de un pais.
 ggplot(precio_por_pais, aes(x = Pais, y = Precio_Unitario_Promedio)) +
@@ -346,20 +321,18 @@ ggplot(precio_por_pais, aes(x = Pais, y = Precio_Unitario_Promedio)) +
 
 Luego de ver visualmente la distribución de variables, podriamos estudiar el ranking de paises baratos/caros, usando un ranking.Esto porque al promediar, se está sobreponderando a los productos más caros. Luego el ranking asigna un número del 1 al 7, donde 7 corresponde al país más caro.
 
-```{r}
-# 1. Generar base con precios por producto (subcategoría)
-precio_por_pais <- datos_precios_tc %>%
-  group_by(Ano, Sub_categoria, Pais) %>%
-  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
-  ungroup()
+### Hacemos un ranking a nivel promedio completo de productos.
 
-# 2. Ranking por producto y año
-ranking_productos <- precio_por_pais %>%
+
+```{r}
+
+# Ranking por producto y año
+ranking_productos <- precio_por_subcategoria %>%
   group_by(Ano, Sub_categoria) %>%
   mutate(Rank_del_Pais = rank(Precio_Unitario_Promedio, ties.method = "first")) %>%
   ungroup()
 
-# 3. Ranking agregado por país
+# Ranking agregado por país
 ranking_final <- ranking_productos %>%
   group_by(Pais) %>%
   summarise(RankTotal = sum(Rank_del_Pais, na.rm = TRUE)) %>%
@@ -371,22 +344,9 @@ print(ranking_final)
 Este ranking se corresponde con la intuición y experiencia donde de forma absoluta, es más caro UK y más barato Colombia.
 
 
-
-
-
 Luego de estudiar la base, agregamos variables que podrian explicar el modelo. Y la unimos a nuestra anterior base.
 
-```{r}
 
-# Cargarmos la base macro.
-macro <- read.csv("variables_macro.csv")
-
-# Unir bases por País y Año, con variables macros para pregunta 2.
-data_completa <- precio_por_pais %>%
-  inner_join(macro, by = c("Pais", "Ano"))
-
-View(data_completa)
-```
 #### Pregunta 2
 
 Usando los aprendizajes derivados de la exploración de datos, utilicen un enfoque de regresión lineal para examinar cuantitativamente qué factores determinan los distintos niveles de precios que pueden haber. En particular, consideren que nos interesa comparar niveles de precios entre países. 
@@ -402,18 +362,19 @@ El nivel de agregación escogido es el precio por subcategoría dado que por eje
 # Modelo Macro con efectos fijos
 # ============================
 
-# Base de datos: precios por país-subcategoría-año
-macro <- read.csv("variables_macro.csv")
+#Ya tenemos cargada la base de macros
 
-precio_por_pais <- datos_precios_tc %>%
+precio_por_subcategoria1 <- datos_precios_tc %>%
   group_by(Ano, Sub_categoria, Pais) %>%
   summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
   ungroup()
 
 # Unimos con macro
-data_macro <- precio_por_pais %>%
+data_macro <- precio_por_subcategoria1 %>%
   inner_join(macro, by = c("Pais", "Ano")) %>%
   mutate(GDPpc_miles = GDPpc / 1000)
+
+#LA DIFERENCIA CON EL TRBAJO REALIZADO CON P0, ES QUE TOMAMOS SOLO POR AÑO.
 
 # Estimamos con efectos fijos
 modelo_macro_fe <- feols(
@@ -434,11 +395,7 @@ summary(modelo_macro_fe)
 # Modelo Micro con efectos fijos
 # ============================
 
-data_micro <- datos_precios_tc %>%
-  mutate(
-    MarcaPropia = as.factor(Marca_propia),
-    Promocion = as.factor(Promocion)
-  )
+#Datos cargados micro en P0.
 
 modelo_micro_fe <- feols(
   PrecioU_oferta_usd ~ MarcaPropia + Promocion + Cadena |
@@ -643,7 +600,54 @@ En vez de pedir que generen una canasta para cada mes año y pais, sugeriría qu
 a. (1.0 puntos) Elaboren tres canastas de abarrotes con al menos cinco productos de sus preferencias para todos los países en alguna fecha cualquiera. Pronostiquen su precio corregido por moneda (USD) incluyendo variables explicativas relevantes. Comparen el precio de Chile con respecto al resto de países. 
 
 ```{r P4a}
-# pronóstico de canasta de abarrotes corregido por moneda
+
+# Asumimos que tu dataframe original se llama 'data_micro'
+
+# --- PASO CLAVE: LIMPIEZA DE DATOS ---
+# Eliminamos las filas donde el precio sea NA antes de hacer cualquier otra cosa
+data_limpia <- data_micro %>%
+  filter(!is.na(PrecioU_oferta_usd))
+
+# --- Ahora sí, dividimos el dataframe LIMPIO ---
+set.seed(123) # Para que la división de datos sea reproducible
+
+# Dividir los datos en entrenamiento (80%) y prueba (20%)
+indices_entrenamiento <- createDataPartition(data_limpia$PrecioU_oferta_usd, p = 0.8, list = FALSE)
+datos_entrenamiento <- data_limpia[indices_entrenamiento, ]
+datos_prueba <- data_limpia[-indices_entrenamiento, ]
+
+
+# --- ENTRENAMIENTO DE MODELOS ---
+
+# 1. Modelo de Regresión Lineal (como base de comparación)
+modelo_lm <- lm(PrecioU_oferta_usd ~ Promocion + Marca_propia + Cadena, data = datos_entrenamiento)
+
+# 2. Modelo k-Nearest Neighbors (kNN)
+control_entrenamiento <- trainControl(method = "cv", number = 10)
+modelo_knn <- train(PrecioU_oferta_usd ~ Promocion + Marca_propia + Cadena, 
+                    data = datos_entrenamiento, 
+                    method = "knn",
+                    trControl = control_entrenamiento,
+                    preProcess = c("center", "scale"),
+                    tuneGrid = expand.grid(k = c(3, 5, 7, 9)))
+
+# 3. Modelo Random Forest
+#modelo_rf <- train(PrecioU_oferta_usd ~ Promocion + Marca_propia + Cadena, 
+#                   data = datos_entrenamiento, 
+#                   method = "rf",
+#                   trControl = control_entrenamiento,
+#                   preProcess = c("center", "scale"),
+#                   tuneGrid = expand.grid(.mtry = c(2, 3)), # Ajustado a 3 predictores
+#                   ntree = 100)
+
+# --- EVALUACIÓN DE MODELOS ---
+
+# Realizar predicciones en el set de prueba
+predicciones_lm <- predict(modelo_lm, newdata = datos_prueba)
+predicciones_knn <- predict(modelo_knn, newdata = datos_prueba)
+#predicciones_rf <- predict(modelo_rf, newdata = datos_prueba)
+
+
 ```
 
 b. (0.5 puntos) Utilicen las mismas canastas de abarrotes y pronostiquen su precio corregido por moneda (USD) y por paridad de poder adquisitivo (ppa) incluyendo variables explicativas relevantes. Comparen el precio de Chile con respecto al resto de países. Expliquen brevemente en qué se diferencia esta métrica en comparación a solo corregir por moneda.
