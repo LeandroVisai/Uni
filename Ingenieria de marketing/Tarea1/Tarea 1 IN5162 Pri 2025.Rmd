@@ -227,9 +227,20 @@ precio_por_categoria <- precio_por_categoria %>%
 
 Luego de estudiar la base, agregamos variables que podrian explicar el modelo. Y la unimos a nuestra anterior base.
 
-```{r Unimos la base de subcategoria con los datos micro}
+```{r Unimos la base de subcategoria con los datos macroeconomicos}
 
-# Unir bases con micro para pregunta 2.
+# Unir bases por País y Año, con variables macro Y micro para pregunta 2.
+precio_por_subcategoria1 <- datos_precios_tc %>%
+  group_by(Ano, Sub_categoria, Pais) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
+  ungroup()
+
+# Unimos con macro
+data_macro <- precio_por_subcategoria1 %>%
+  inner_join(macro, by = c("Pais", "Ano")) %>%
+  mutate(GDPpc_miles = GDPpc / 1000)
+
+
 data_micro <- datos_precios_tc %>%
   mutate(
     MarcaPropia = as.factor(Marca_propia),
@@ -362,20 +373,7 @@ El nivel de agregación escogido es el precio por subcategoría dado que por eje
 # Modelo Macro con efectos fijos
 # ============================
 
-#Ya tenemos cargada la base de macros
-
-precio_por_subcategoria1 <- datos_precios_tc %>%
-  group_by(Ano, Sub_categoria, Pais) %>%
-  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
-  ungroup()
-
-# Unimos con macro
-data_macro <- precio_por_subcategoria1 %>%
-  inner_join(macro, by = c("Pais", "Ano")) %>%
-  mutate(GDPpc_miles = GDPpc / 1000)
-
-#LA DIFERENCIA CON EL TRBAJO REALIZADO CON P0, ES QUE TOMAMOS SOLO POR AÑO.
-
+#Ya tenemos cargada la base de macros, y transformada en P0.
 # Estimamos con efectos fijos
 modelo_macro_fe <- feols(
   Precio_Unitario_Promedio ~ GDPpc_miles + Arancel + UrbGrow +
