@@ -545,6 +545,7 @@ new_caso <- data.frame(
   Mes  = 2
 )
 predicciones <- sapply(model_list, function(modelo) predict(modelo, newdata = new_caso))
+
 obs <- data_ag %>%
   filter(Ano==2022, Mes==2, Pais=="Chile", Sub_categoria=="Aceite") %>%
   slice(1) %>%
@@ -621,6 +622,31 @@ ggplot(costo_final_canastas, aes(x = reorder(Pais, Costo_Total_USD), y = Costo_T
   theme(legend.position = "none")
 
 ```
+
+
+```{r}
+# --- 1. Calcular el costo REAL OBSERVADO de cada canasta (promedio de Feb y Mar 2022) ---
+costo_observado_ajustado <- data_ag %>%
+  # La condición ahora incluye el Mes 2 y el Mes 3
+  filter(Ano == 2022, Mes %in% c(2, 3)) %>%
+  right_join(definicion_canastas, by = "Sub_categoria") %>%
+  group_by(Pais, Canasta) %>%
+  # Usamos mean() para promediar los precios de los dos meses
+  summarise(Costo_Observado_USD = sum(Precio_Unitario_Promedio, na.rm = TRUE), .groups = 'drop')
+
+# --- 2. Unir la tabla de pronósticos con la de costos observados ajustados ---
+tabla_comparativa_ajustada <- costo_final_canastas %>%
+  left_join(costo_observado_ajustado, by = c("Pais", "Canasta")) %>%
+  rename(Costo_Pronosticado_USD = Costo_Total_USD)
+
+# --- 3. Presentar la tabla comparativa final ---
+cat("Tabla Comparativa: Costo Pronosticado vs. Costo Observado (Promedio Feb-Mar 2022):\n")
+print(tabla_comparativa_ajustada)
+
+```
+
+
+
 
 b. (0.5 puntos) Utilicen las mismas canastas de abarrotes y pronostiquen su precio corregido por moneda (USD) y por paridad de poder adquisitivo (ppa) incluyendo variables explicativas relevantes. Comparen el precio de Chile con respecto al resto de países. Expliquen brevemente en qué se diferencia esta métrica en comparación a solo corregir por moneda.
 
