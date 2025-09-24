@@ -1,0 +1,19 @@
+No;Nombre;Descripción
+1;hhid;Identificador del Panelista
+2;Income;Medida del ingreso anual del hogar
+3;Famsize;Numero de integrantes en el grupo familiar
+4;College;1 si el sostenedor de la casa tien titulo universitario
+5;Retired;1 si el sostenedor de la casa esta jubilado
+6;Cluster;Identificador del segmento al que pertenece el panelista
+7;hhid;Identificador del Panelista
+8;choice;Identificador de la marca comprada por el panelista
+9;PPkStk;Precio Parklay en pan (1)
+10;PBBStk;Precio Blue Bonnet en pan (2)
+11;PFlStk;Precio Fleischmanns en pan (3)
+12;PHseStk;Precio House en pan (4)
+13;PGenStk;Precio Genérico en pan (5)
+14;PImpStk;Precio Imperial en pan (6)
+15;PSSTub;Precio Shed Spread en pote (7)
+16;PPkTub;Precio Parklay en pote (8)
+17;PFlTub;Precio Fleischmanns en pote (9)
+18;Phsetub;Precio House en pote (10)
