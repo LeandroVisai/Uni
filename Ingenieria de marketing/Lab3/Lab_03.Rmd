@@ -1,0 +1,361 @@
+---
+title:  'Laboratorio 3. IN5162 - Semestre Primavera 2025'
+author: 'Agregar Nombre'
+date:   '24 de Septiembre de 2025'
+output:
+  html_document:
+    df_print: paged
+    theme: simplex
+    highlight: tango
+    toc: yes
+encoding: UTF-8
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preliminares
+
+Usted es una ingeniera recién egresada de la Republica Independiente y ha sido contratada como analista comercial por, _Blue Bonet_, uno de los productores de margarina más grandes del país. Después de una primera semana de inducción, en tu primera reunión formal de trabajo te cuentan que la compañía está evaluando el atractivo de vender no solo en pan dónde tiene un X% de participación de mercado, sino que también incursionar en el formato pote, donde actualmente no tiene presencia. 
+
+Para empezar a sondear el atractivo del formato pote, se te entrega una base de datos que comprende 4.470 compras de 10 marcas de margarina para 516 panelistas con compras frecuentes en el canal de supermercados. Los panelistas se extraen desde una panel de [A.C Nielsen](https://global.nielsen.com/es/) seleccionando a aquellos que formen parte del panel por al menos 95 semanas en el periodo de medición. La selección de marcas ha dejado afuera de la muestra marcas con atributos especiales como margarinas light o libres de sal. Así, las marcas consideradas en conjunto representan el 55% del total de ventas en la categoría. El conjunto de datos ha sido consolidado en una única tabla _margarine.csv_ que registra los precios de cada una de las marcas y la alternativa escogida para cada ocasión de compra además de características de los hogares considerados, tales como edad y género. La tabla considera además una variable _cluster_ con una clasificación interna que ha implementado la compañía para agrupar hábitos de compra similares. La Tabla 1 muestra el detalle de las columnas contenidas en la tabla.
+
+```{r directorio, warning=FALSE}
+# Número de dígitos a utilizar y fijar una semilla para reproducibilidad
+options(digits = 5)   
+set.seed(295)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr) 
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+```
+
+
+```{r}
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Lab3") 
+
+
+```
+
+```{r, echo=FALSE}
+datadic <- read.csv("margarinedatadic.csv", fileEncoding = "Latin1", header=TRUE, sep=";")
+
+datadic %>%
+  kbl(caption = "**Tabla 1:** Descripción columnas base datos Margarine") %>%
+  kable_classic(full_width = F, html_font = "Trebuchet MS")
+```
+Una muestra de la tabla y una breve caracterización de las participaciones de mercado se muestran a continuación:
+
+```{r bases, warning=FALSE}
+#Se cargan los datos y con visualizan las primeras filas
+margarine <- read.csv("margarine.csv", header=TRUE)
+head(margarine)
+```
+
+Antes de proponer modelos de comportamiento, puede resultar útil desplegar algunas visualizaciones exploratorias de los volumenes de venta por marca y formato. 
+```{r}
+margarine <- margarine %>% 
+  mutate(brand = case_when(choice %in% c(1,8) ~ "Parklay", #marcas
+                           choice == 2 ~ "Blue Bonnet",
+                           choice %in% c(3,9) ~ "Fleischman",
+                           choice %in% c(4,10) ~ "House",
+                           choice == 5 ~ "Generic", 
+                           choice == 6 ~ "Imperial",
+                           choice == 7 ~ "Shed Spread"),
+         format = case_when(choice %in% c(1,2,3,4,5,6) ~ "pan", #tipo de margarina
+                            choice %in% c(7,8,9,10) ~ "pote"))
+
+agg.margarine <- margarine %>% 
+  group_by(choice, brand, format) %>% #agrupamos según marca y tipo de mantequilla
+  summarise(count = n(), .groups='drop')
+```
+
+```{r}
+ggplot(agg.margarine, aes(x=as.factor(brand), y=count, fill=as.factor(brand))) +
+  geom_bar(stat = "identity") + facet_wrap(~as.factor(format)) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), axis.title.x = element_blank()) + labs(fill = "brand")
+```
+
+En general observamos que el mercado está dominado por el formato _pan_, donde _Blue Bonnet_ tiene la segunda mayor participación de mercado. El formato _pote_ está menos desarrollado con _Fleischman_ y _Shed Spread_ concentrando la mayoría de las ventas. 
+
+# Desarollo del laboratorio {.tabset}
+
+## Regresión Binomial
+
+La estructura de los datos permite diferentes enfoques para describir las preferencias por pote. Por ejemplo, podemos proponer un modelo de conteo para caracterizar con qué intensidad los clientes eligen un formato sobre otro. Considerando que los clientes tienen distintos números de visitas, pareciera que un modelo de elección permite describir mejor el fenómeno. 
+
+Para poder estimar modelos binomiales necesitamos los pares $(m_i, x_i)$ para cada cliente $i$, en que $m_i$ corresponde al numero de ocasiones en que el cliente ha comprado margarina y $x_i$ es la cantidad de veces que ha elegido comprar el formato pote. Para eso tenemos que agregar los datos a nivel de cliente:
+
+```{r}
+cus.margarine <- margarine %>% 
+  group_by(hhid, cluster) %>%
+  summarise(m = n(),
+            x = sum(format=="pote"),
+            Income =  mean(Income),
+            Famsize = mean(FamSize), 
+            College = mean(college), 
+            Retired = mean(retired), .groups = "drop")
+head(cus.margarine)
+```
+
+### A nivel Poblacional
+
+Para partir el análisis, podemos proponer un modelo de regresión binomial _a nivel poblacional_, es decir, determinar de forma general qué factores determinan la cantidad de margarina en pote compra un cliente. Para ello, podemos considerar que la probabilidad de comprar en pote en una ocasión de compra dada viene dada por:
+
+$$\theta( \beta ) = \frac{\exp(\beta_1 + \beta_2 Income + \beta_3Famsize + \beta_4 College + \beta_5 Retired)}{1+\exp(\beta_1 + \beta_2 Income + \beta_3Famsize + \beta_4 College + \beta_5 Retired)}$$
+Luego, la probabilidad de que un cliente $i$ compre $x_i$ veces margarina en pote, en $m_i$ ocasiones de compra, viene dada por:
+
+
+$$\mathbb{P}(X_i=x_i|m_i, \theta(\beta) )= \frac{m!}{x!(m-x)!} \cdot \theta^x (1-\theta)^{m-x} $$
+
+Así, la log-verosimilitud del modelo viene dada por:
+$$
+LL = \sum_{i=1}^{n} \log(\mathbb{P}(X_i=x_i|m_i, \theta(\beta)))
+$$
+
+Partimos definiendo la verosimilitud
+```{r}
+ll.breg <-function(beta, data){
+  # regresión lineal exponenciada
+  ebetax <- exp(beta[1] + as.matrix(data[, c("Income","Famsize","College","Retired")]) %*% beta[2:5])
+  
+  # parámetro del modelo
+  theta <- ebetax / (1+ebetax)
+  
+  # cálculo de probabilidades para cada cliente
+  pr <- with(data, choose(m,x) * theta^x * (1-theta)^(m-x))
+  
+  #suma de las log-probabilidades
+  return(-sum(log(pr))) 
+}
+```
+
+Maximizamos verosimilitud y reportamos resultados
+```{r}
+param.start = rep(0.01,5) #parametros iniciales de thetha
+
+#optimización de parámetros
+mle.breg <- optim(par=param.start, fn=ll.breg, data=cus.margarine, hessian=TRUE, 
+                 method="BFGS", control = list(maxit=1000, trace=TRUE, REPORT=10))
+
+#resultados
+myresults <- cbind(mle.breg$par, sqrt(diag(solve(mle.breg$hessian))))
+rownames(myresults) <- c("(Intercept)", "Income", "FamSize", "College", "Retired")
+colnames(myresults) <- c("Estimate", "Std. Error")
+print( round(myresults, 5) )
+```
+
+Los resultados sugieren que ingreso correlaciona positivamente con consumo margarina en pote, mientras que tamaño del hogar, educación y retiro de del sostenedor correlacionan negativamente. 
+
+### A nivel de segmentos
+
+Para orientar las decisiones de introducción de un potencial formato en pote, podría convenir concentrarse en segmentos específicos. Partamos comparando tasas de compra entre segmentos.
+
+```{r}
+#cálculo de parámetros m y x por segmento
+seg.margarine <- margarine %>%
+  group_by(cluster) %>%
+  summarise(m = n(), 
+            x = sum(format=="pote"),
+            rate = x/m,
+            Income =  mean(Income),
+            Famsize = mean(FamSize), 
+            College = mean(college), 
+            Retired = mean(retired), .groups = "drop")
+
+head(seg.margarine, 10)
+```
+
+A partir de estas estadísticas, notamos que el segmento **3**, **4**  y **10** son los que compran en mayor proporción margarina en pote (el segmento **2** es el tiene la menor proporción). Las estadísticas también nos indican valores promedio para las variables demográficas de cada segmento (Income, FamSize, College, Retired). Sin embargo, para ver el efecto de cada variable demográfica **dentro** de cada segmento, tenemos que estimar modelos específicos para cada segmento. 
+
+```{r, warning=FALSE}
+#cantidad de clusters
+clusters <- sort(unique(margarine$cluster))
+
+#definición preeliminar de resultados
+myresults <- NULL
+
+#Repetimos el proceso de entrenamiento del modelo para cada cluster
+for(s in clusters){
+  #número del cluster a analizar
+  cat("Estimating parameters segment", s, "\n")
+  
+  #optimización de parámetros para s-ésimo cluster
+  mle.breg <- optim(par=param.start, fn=ll.breg, data=subset(cus.margarine, cluster==s), 
+                    hessian=TRUE, method="BFGS", control = list(maxit=1000, trace=TRUE, REPORT=10))
+  cat("-----------", "\n\n")
+  #guardamos los resultados
+  myresults <- cbind(myresults, mle.breg$par)
+}
+
+#nombres de columnas del dataset de resultados
+rownames(myresults) <- c("(Intercept)", "Income", "FamSize", "College", "Retired")
+
+#clusters
+colnames(myresults) <- paste("seg", clusters)
+```
+
+Reportar los resultados
+```{r}
+myresults %>%
+  kbl(caption = "**Tabla 2:** Comparasión MLE por segmentos", digits=3) %>%
+  kable_classic(full_width = F, html_font = "Trebuchet MS")
+```
+
+Estos números nos indican cómo las variables demográficas afectan la probabilidad de que un cliente, pertenenciente al segmento i, compre margarina en pote. Por ejemplo, para el segmento **10** que tiene la mayor tasa de compra en pote, solo el tamaño del hogar correlaciona positivamente.
+
+**Observación:** Para tener una mejor análisis deberíamos estudiar la significancia de los coeficientes $\beta$ :)
+
+## Preguntas
+
+Considere el siguiente modelo Beta-Binomial:
+
+$$P(X_i=x_i| \alpha, \beta) = \frac{m_i!}{(m_i - x_i)! x_i!} \cdot \frac{B(\alpha + x_i, \beta + m_i - x_i)}{B(\alpha,\beta)}$$
+Donde $B(\cdot)$ es la función Beta, $x_i$ es la cantidad de veces que el cliente $i$ elige comprar en pote y  $m_i$ es el número de compras del cliente$i$, tal como los definimos anteriormente. 
+
+### Pregunta 1
+
+Escriba la función de verosimilitud para un modelo beta binomial para toda la población y grafique la distribución de la probabilidad de comprar en pote ($\theta$) en la población
+```{r}
+# modelo beta binomial
+#Volvemos a llamar a margarine, porque antes le llamaron con un nivel de agregación mayor.
+
+# Usaremos el archivo margarine.csv que se describe en el Lab 03
+margarina <- read.csv("margarine.csv", header=TRUE)
+
+# --- Agregamos los datos para obtener x_i y m_i por cliente ---
+aggdata <- margarina %>%
+  # Creamos la columna 'format' para facilitar el conteo
+  mutate(format = if_else(choice %in% c(7,8,9,10), "pote", "pan")) %>%
+  group_by(hhid) %>%
+  summarise(
+    m = n(),          # Total de compras
+    x = sum(format == "pote")   # Conteo de compras en pote
+  ) %>%
+  ungroup()
+
+```
+
+```{r}
+# Log-vero
+
+ll.beta.binom <- function(params, x, m) {
+  # 1. Extraemos los parámetros alpha y beta. Usamos exp() para
+  #    asegurar que siempre sean positivos, una práctica estándar
+  #    vista en los Rmd de las sesiones.
+  alpha <- exp(params[1])
+  beta <- exp(params[2])
+  
+  # 2. Calculamos el log-likelihood para todos los clientes a la vez.
+  #    Esta línea es la traducción directa de la fórmula a R.
+  log_likelihood <- lchoose(m, x) + lbeta(alpha + x, beta + m - x) - lbeta(alpha, beta)
+  
+  # 3. Sumamos el log-likelihood de todos los clientes y devolvemos el negativo.
+  #    La función optim() de R busca minimizar, así que le entregamos el
+  #    valor negativo para que, en la práctica, maximice nuestra función.
+  return(-sum(log_likelihood))
+}
+```
+
+```{r Graficamos}
+# --- Estimar los parámetros para toda la población ---
+params.start <- c(0.01, 0.01) # Valores iniciales para que el optimizador comience
+mle.bb <- optim(par = params.start,
+                fn = ll.beta.binom,
+                x = aggdata$x,
+                m = aggdata$m,
+                method = "BFGS")
+```
+
+```{r}
+# Obtenemos los parámetros estimados alpha y beta
+alpha.pop <- exp(mle.bb$par[1])
+beta.pop <- exp(mle.bb$par[2])
+
+cat(paste("\nParámetros estimados para la población:\nAlpha =", round(alpha.pop, 3), "\nBeta =", round(beta.pop, 3), "\n"))
+
+
+# Graficamos la distribución de la probabilidad (theta) ---
+ggplot(data.frame(theta = c(0, 1)), aes(x = theta)) +
+  stat_function(fun = dbeta, args = list(shape1 = alpha.pop, shape2 = beta.pop), 
+                geom = "line", color = "dodgerblue", linewidth = 1.5) +
+  labs(
+    title = "Distribución de la Preferencia (θ) por Margarina en Pote",
+    subtitle = "Estimada para toda la población con un Modelo Beta-Binomial",
+    x = "Probabilidad (θ) de comprar en pote",
+    y = "Densidad"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+
+### Pregunta 2
+
+Repita el procedimiento anterior para dos segmentos cualquiera y compare las distribuciones de $\theta$ para esos dos segmentos
+```{r}
+# modelo beta binomial, dos segmentos
+#Recuremamos la base
+margarina <- read.csv("margarine.csv", header = TRUE)
+
+# Agrupamos por 'hhid' y 'cluster' para mantener esa columna
+aggdata <- margarina %>%
+  mutate(format = if_else(choice %in% c(7,8,9,10), "pote", "pan")) %>%
+  group_by(hhid, cluster) %>% # Agrupamos por cluster desde el principio
+  summarise(
+    m = n(),
+    x = sum(format == "pote"),
+    .groups = 'drop' 
+  )
+
+segmento_3_data <- aggdata %>% filter(cluster == 3)
+segmento_10_data <- aggdata %>% filter(cluster == 10)
+
+# Estimar para el Segmento 3
+params.start <- c(0.01, 0.01)
+mle.s3 <- optim(par = params.start, fn = ll.beta.binom,
+                x = segmento_3_data$x, m = segmento_3_data$m, method = "BFGS")
+alpha.s3 <- exp(mle.s3$par[1])
+beta.s3 <- exp(mle.s3$par[2])
+
+# Estimar para el Segmento 10
+mle.s10 <- optim(par = params.start, fn = ll.beta.binom,
+                 x = segmento_10_data$x, m = segmento_10_data$m, method = "BFGS")
+alpha.s10 <- exp(mle.s10$par[1])
+beta.s10 <- exp(mle.s10$par[2])
+
+cat(paste("\nSegmento 3:  Alpha =", round(alpha.s3, 3), " | Beta =", round(beta.s3, 3)))
+cat(paste("\nSegmento 10: Alpha =", round(alpha.s10, 3), " | Beta =", round(beta.s10, 3), "\n"))
+```
+
+```{r Grafico}
+theta_vals <- seq(0, 1, length.out = 500)
+dist_comparativa <- data.frame(
+  theta = rep(theta_vals, 2),
+  densidad = c(dbeta(theta_vals, alpha.s3, beta.s3),
+               dbeta(theta_vals, alpha.s10, beta.s10)),
+  Segmento = rep(c("Cluster 3", "Cluster 10"), each = 500)
+)
+
+
+ggplot(dist_comparativa, aes(x = theta, y = densidad, color = Segmento)) +
+  geom_line(linewidth = 1.2) +
+  labs(
+    title = "Comparación de la Preferencia (θ) por Margarina en Pote",
+    subtitle = "Segmentos de Clientes 3 vs. 10",
+    x = "Probabilidad (θ) de comprar en pote",
+    y = "Densidad",
+    color = "Segmento"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+### Pregunta 3
+
+En <span class="underline">función de los resultados de la pregunta 2</span>, comente cuál de los segmentos parece tener una mejor probabilidad de comprar en pote. 
+
+Al observar el gráfico, la curva de preferencia del Cluster 10 (roja) está claramente desplazada hacia la derecha, lo que indica que sus miembros tienen una preferencia más alta y consistente por el formato en pote. Mientras que el Cluster 3 muestra una preferencia más variada, el Segmento 10 es un público más homogéneo y con mayor propensión a elegir este formato, convirtiéndolo en el objetivo más atractivo.
