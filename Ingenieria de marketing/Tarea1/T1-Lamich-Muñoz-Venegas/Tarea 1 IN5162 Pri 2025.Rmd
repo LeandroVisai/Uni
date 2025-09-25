@@ -1,0 +1,910 @@
+---
+title:  "Tarea 1 - IN5162, Semestre Primavera 2025"
+author: Lamich, Muñoz, Venegas.
+date:   "`r format(Sys.time(), '%d %B, %Y')`"
+
+output:
+  html_document:
+    df_print: paged
+    theme: simplex
+    highlight: tango
+    toc: no
+encoding: UTF-8
+---
+
+<!-- 
+Author  	  : Marcel Goic
+Description	: Comparación de precios de Abarrotes
+						- v.0.0 (14/Abr/2022). First Version
+						- v.0.0 (14/Aug/2025). Add basket forecasting
+Notes       : 
+-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preliminares
+
+(0.0 puntos) Escriban acá todos los comandos que necesita ejecutar antes de abordar las preguntas de la tarea (carga de librerías, lectura de datos, limpieza de la data, transformación de variables y todo lo que necesite).
+
+#### Preparación Tarea
+
+```{r P0 Corremos libreria}
+#Exploración de datos
+library(readxl)
+library(fixest)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(glmnet)
+library(kableExtra)
+library(modelsummary)
+library(caret)
+library(earth)
+library(randomForest)
+library(tidyr)
+```
+
+```{r P0 Limpiamos objetos}
+
+rm(list=ls())         # Limpia la lista de objetos 
+graphics.off()        # Limpia la lista de gráficos
+options(digits = 5)   # Número de dígitos a utilizar
+
+```
+
+```{r P0 Fijamos directorio}
+#setwd("C:\Users\Leandro\Documents\github\Uni\Ingenieria de marketing")  # fijando el directorio de trabajo
+```
+
+```{r P0 Leemos la base}
+#Exploración de datos
+# Leemos el archivo xlsx de Canasta de productos.
+datos_precios = read_excel("Canasta_de_productos.xlsx")
+
+# Cargamos la base tipo de cambio.
+Tipo_cambio <- read.csv("Tipo_cambio.csv")
+
+# Cargamos la base de variables macros utilizadas.
+macro <- read.csv("variables_macro.csv")
+
+#Mostramos las bases.
+head(datos_precios)
+head(Tipo_cambio)
+head(macro)
+```
+
+Realizamos ajustes a la base de precios.
+
+```{r P0 Transformamos la base}
+
+# Renombramos la columna con _ para que sea intuitivo al momento de trabajar las bases.
+datos_precios <- datos_precios %>% rename(Sub_categoria = `Sub-categoria`)
+
+# Transformamos los años a numerico.
+datos_precios$Ano <- as.numeric(datos_precios$Ano)
+
+# Creamos una variable que se llame precio final, para explorar si existen cambios en cuanto a las ofertas que ofrecen las cadenas de supermercados.Es la variable que utilizaremos para el caso de estudio.
+
+datos_precios <- datos_precios %>%
+  mutate(Precio_Final = ifelse(!is.na(Precio_Oferta) & Promocion == 1, Precio_Oferta, Precio_Normal))
+
+#Y eliminamos precio oferta, ya que no lo necesitamos con la nueva variable
+datos_precios <- datos_precios %>% select(-Precio_Oferta)
+
+# Primero se definen los meses en orden.
+meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+           "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+
+# Luego se convierte la columna "Mes" en factor ordenado y después a número.
+datos_precios$Mes <- match(datos_precios$Mes, meses)
+datos_precios$Mes <- as.numeric(datos_precios$Mes)
+
+head(datos_precios$Mes) #Corroboramos.
+```
+
+
+Ajustamos las base tipo de cambio para unirla con la de precios, esto por que al extraerla desde yahoo finance viene con otra dirección.
+
+Ademas realizamos la transformación inmediata, para que podamos comparar paises desde un principio.
+
+```{r Uniendo base precios con tipo de cambio}
+#Pasar a formato largo (de columnas de países a columna Pais + TipoCambio)
+Tipo_Cambio <- Tipo_cambio %>%
+  pivot_longer(
+    cols = c(Argentina, Chile, Colombia, España, Perú, Portugal, UK),
+    names_to = "Pais",
+    values_to = "TipoCambio"
+  )
+
+#Unir con la base de precios (df_precios)
+datos_precios_tc <- datos_precios %>%
+  left_join(Tipo_Cambio, by = c("Pais", "Ano", "Mes")) %>%
+  mutate(
+    Precio_Normal_usd = Precio_Normal * TipoCambio, # Calculamos todo en dolares.
+    Precio_Final_usd  = Precio_Final  * TipoCambio
+  )
+
+# Ademas agregamos precio unitario, para considerar el mismo peso para todos los productos.
+datos_precios_tc <- datos_precios_tc %>%
+  mutate(PrecioU_oferta_usd = Precio_Final_usd/Peso_Volumen, PrecioU_Normal_usd = Precio_Normal_usd/Peso_Volumen)
+
+
+#Limpiamos las columnas que no utilizaremos para limpiar el trabajo realizado.
+datos_precios_tc <- datos_precios_tc %>%
+  select(-Date,-Precio_Final,-Precio_Normal,-TipoCambio,-Precio_Final_usd,-Precio_Normal_usd,-Peso_Volumen)
+
+head(datos_precios_tc) # Resultado final
+```
+
+Ademas no todas las columnas son importantes, no podemos comparar el precio de la sal, azucar y endulzante por ejemplo. Para esto decidimos agrupar los productos por el tipo de producto, es decir todas las azucar como distintos productos que se venden en chile se deben agrupar en alguna unica.
+
+De esta forma, comparamos azucar entre los paises y no distintos tipos de azucar como blanca, rubia, etc, sino un unico item "Azucar"
+
+Por lo que, hacemos un group by para subcategoria, categoria, pais. Todo esto con finaes exploratorios.
+
+```{r agrupamos por sub_categoria Y Pais}
+precio_por_subcategoria <- datos_precios_tc %>%
+  group_by(Ano, Mes, Pais, Sub_categoria) %>% #Agrupamos
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))#Calculamos promedio del grupo.
+
+#Subimos el nivel de agregación, para usar solo categoria.
+precio_por_categoria <- datos_precios_tc %>%
+  group_by(Pais, Categoria) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))
+
+#Subimos el nivel de agregación, para usar solo 1 conjunto de productos y obtenemos promedio.
+precio_por_pais <- datos_precios_tc %>%
+  group_by(Pais) %>%
+  summarise(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE))
+
+```
+
+Existen subcategorias, que en verdad no nos importan tanto, y nos mueven algunos precios en exceso debido a su peso minimo. Entendemos que muchos de esos productos son importantes a nivel canasta. Sin embargo, para este caso de estudio decidimos dejarlo afuera por lo anterior mencionado.
+
+```{r eliminamos subcategorías o categorias que están mal}
+# Eliminar subcategorías específicas con un filtro de subcategoria.
+precio_por_subcategoria <- precio_por_subcategoria %>%
+  filter(!Sub_categoria %in% c("Ajo", "Albahaca", "Oregano", 
+                               "Endulzante", "Canela", 
+                               "Laurel", "Chocolate", "Té","Te","Café","Dulces","Aceto"))
+
+
+# Eliminar categorías específicas
+precio_por_categoria <- precio_por_categoria %>%
+  filter(!Categoria %in% c("Especias, condimentos y caldos",
+                           "Azúcar, sal y sucedáneos",
+                           "Cafe y te",
+                           "Café y té",
+                           "Dulces y postres no congelados sin cereales",
+                           "Sopas"))
+
+```
+
+Ademas debemos asegurarnos que las mismas categorias y subcategorias tienen que estar para todos los paises.
+
+```{r}
+
+# Filtramos directamente, manteniendo solo las categorías y subcategorias que aparecen en todos los paises.
+
+precio_por_subcategoria <- precio_por_subcategoria %>%
+  group_by(Sub_categoria) %>%
+  filter(n_distinct(Pais) == 7) %>% # Este filtro funciona como agrupar las subcategoria y que solo existan 7 en total, por los 7 paises considerados. Así si solo existen 6, no se considera la subcategoria para el caso de estudio.
+  ungroup()
+
+precio_por_categoria <- precio_por_categoria %>%
+  group_by(Categoria) %>%
+  filter(n_distinct(Pais) == 7) %>%
+  ungroup()
+
+```
+
+Luego de estudiar la base, realizamos el procesamiento de la base para pregunta 2, en las que necesitamos data macro y micro.
+
+```{r Data macro}
+
+# Unir bases por País y Año, con variables macro Y micro para pregunta 2.
+precio_por_subcategoria1 <- datos_precios_tc %>%
+  select(Ano, Mes, Pais, Sub_categoria, PrecioU_oferta_usd) %>%
+  group_by(Ano, Mes, Pais, Sub_categoria) %>%
+  mutate(Precio_Unitario_Promedio = mean(PrecioU_oferta_usd, na.rm = TRUE)) %>%
+  ungroup() # Tratamos los datos de la forma en que lo hicimos antes para categorias.
+
+macro <- macro %>%
+  mutate(Pais = if_else(Pais == "PERU", "Perú", Pais)) #normalizamos el nombre de Perú
+
+# Unimos con macro
+data_macro <- precio_por_subcategoria1 %>%
+  inner_join(macro, by = c("Pais", "Ano")) %>%
+  mutate(GDPpc_miles = GDPpc / 1000)# Trasnformamos GDP por que su magnitud es grande.
+```
+
+```{r Data micro}
+
+# Ca,biamos el formato de marca propia y promoción
+data_micro1 <- datos_precios_tc %>%
+  mutate(MarcaPropia = as.factor(Marca_propia),
+    Promocion = as.factor(Promocion))
+
+#Unimos las bases con los vectores que nos importan.
+data_unida_filtrada <- data_micro1 %>%
+  inner_join(precio_por_subcategoria, by = c("Ano", "Mes", "Pais", "Sub_categoria"))
+
+#Seleccionamos solo las variables que nos importa dentro de la data unida.
+data_micro <- data_unida_filtrada %>%
+  dplyr::select(Precio_Unitario_Promedio,PrecioU_oferta_usd, MarcaPropia, Promocion, Cadena, Categoria , Sub_categoria, Pais, Ano, Mes) %>%
+  na.omit()
+
+```
+
+```{r Conversion de data para p4b}
+
+# Creamos el dataframe a mano con los datos de PPA que obtuvimos.
+ppa_ancho <- data.frame(
+  Pais = c("Argentina", "Chile", "Colombia", "España", "UK", "Perú", "Portugal"),
+  `2021` = c(38.783, 423.014, 1340.326, 0.588, 0.669, 1.734, 0.540),
+  `2022` = c(61.499, 436.528, 1373.871, 0.570, 0.638, 1.691, 0.525),
+  check.names = FALSE # Para se utilicen "2021" y "2022"
+)
+
+# Convertir el dataframe de PPA a formato largo, esto porque queremos filas.
+ppa <- ppa_ancho %>%
+  pivot_longer(
+    cols = c(`2021`, `2022`),       # Las columnas que queremos transformar
+    names_to = "Ano",              # La nueva columna para los años
+    values_to = "Factor_PPA"       # La nueva columna para los valores de PPA
+  ) %>%
+  mutate(Ano = as.integer(Ano)) # Convertimos la columna 'Ano' a número
+```
+
+## Desarrollo
+
+Documenten acá el desarrollo de su tarea por pregunta.
+
+#### Pregunta 1
+
+(1.0 puntos) Exploren los datos para entender la distribución del precio de los abarrotes y ver qué variables podrían ayudar a explicar posibles diferencias en el nivel de precios entre países.
+
+```{r P1}
+#Exploración de datos
+
+# Generamos el gráfico de dispersión
+ggplot(precio_por_subcategoria, aes(x = Sub_categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(
+    title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Subcategoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) #Rotar etiquetas del eje X
+  )
+```
+Notamos que cada subcategoria tiene cierto nivel de precio, por lo que seria interesante controlar por esa variable.
+
+Exploramos solo por un conjunto de productos.
+
+```{r}
+
+#Mini filtro por algunos paises.
+precio_categorias_comunes <- precio_por_categoria %>%
+  filter(Pais %in% c("Perú", "Colombia", "UK"))
+
+#Graficamos.
+ggplot(precio_categorias_comunes, aes(x = Categoria, y = Precio_Unitario_Promedio, color = Pais)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Categoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=90,vjust=0.5,hjust=1) # Rotar etiquetas del eje X
+  )
+```
+El anterior grafico se visualiza bien si es que se abre hacia otra ventana.
+
+
+Esto se hizo para entender una muestra, por ejemplo se ve que UK parece ser el más caro de los 3 y Colombia el más barato.
+
+```{r}
+
+#Graficamos promediando todos los productos de un pais.
+ggplot(precio_por_pais, aes(x = Pais, y = Precio_Unitario_Promedio)) +
+  geom_jitter(width = 0.25, alpha = 0.7, size = 2.5) + # Jitter para evitar solapamiento
+  labs(title = "Dispersión de Precios Promedio por Subcategoría y País",
+    subtitle = "Cada punto es el precio promedio de una categoría en un país",
+    x = "Categoría de Producto",
+    y = "Precio Unitario Promedio (USD)",
+    color = "País") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1) # Rotar etiquetas del eje X
+  )
+```
+
+Luego de ver visualmente la distribución de variables, podriamos estudiar el ranking de paises baratos/caros, usando un ranking.Esto porque al promediar, se está sobreponderando a los productos más caros. Luego el ranking asigna un número del 1 al 7, donde 7 corresponde al país más caro.
+
+Hacemos un ranking a nivel promedio completo de productos.
+
+```{r}
+
+# Ranking por producto y año
+ranking_productos <- precio_por_subcategoria %>%
+  group_by(Ano, Sub_categoria) %>%
+  mutate(Rank_del_Pais = rank(Precio_Unitario_Promedio, ties.method = "first")) %>%
+  ungroup()
+
+# Ranking agregado por país
+ranking_final <- ranking_productos %>%
+  group_by(Pais) %>%
+  summarise(RankTotal = sum(Rank_del_Pais, na.rm = TRUE)) %>%
+  arrange(RankTotal)
+
+# 4. Resultado
+print(ranking_final)
+```
+Este ranking se corresponde con la intuición y experiencia donde de forma absoluta, es más caro UK y más barato Colombia.
+
+
+Luego de estudiar la base, agregamos variables que podrian explicar el modelo. Y la unimos a nuestra anterior base. Esto viene en la siguiente pregunta.
+
+#### Pregunta 2
+
+Usando los aprendizajes derivados de la exploración de datos, utilicen un enfoque de regresión lineal para examinar cuantitativamente qué factores determinan los distintos niveles de precios que pueden haber. En particular, consideren que nos interesa comparar niveles de precios entre países. 
+     
+a. (1.0 puntos) Propongan al menos dos especificaciones alternativas para el objetivo propuesto. Justifiquen muy brevemente por qué las variables explicativas que está incluyendo en el modelo tienen sentido desde el punto de vista del problema. Justifiquen además el nivel de agregación escogido y los índices considerados en el modelo.
+
+Primero proponemos una especificación solo con variables macro externas y haremos otra con variables de la base, como cadena por ejemplo. Esto dado que como son solo 7 países, se tiene muy poca varianza solo con las variables macro por país y para 2 años.
+
+El nivel de agregación escogido es el precio por subcategoría dado que por ejemplo leche de chocolate o normal es indiferente y como se vio antes tienen precios similares, en un país determinado y en un tiempo determinado. Por esta razón se agregan efectos fijos por estas 3 variables.
+
+Aranceles refleja los aranceles a la importación, esto impacta en los costos de un producto y por lo tanto en su precio final, es esperable que su signo sea positivo. 
+
+LPI es un índice de que tan buena es la logística en un país, a mejor logística menores serán los precios, por tanto debería tener signo negativo.
+Es esperable que a mayor GDPpc mayor sea el precio de los alimentos pues los costos suben, hay mayores sueldos, costos de producción que se cargan en el precio final. 
+
+La variable FoodImp tiene un beta positivo pues a mayor porcentaje importado de alimentos se está más expuesto a shocks externos.
+
+Inflation, average consumer prices index es un indicador de la inflación en la canasta básica, es esperable que sea positivo. 
+
+Mayor UrbGrow(crecimiento urbano), lleva a menor precio pues al haber mayor competencia y acceso a mercados en las ciudades, los precios caen.
+
+Por último, Import_PIB es el porcentaje del PIB que representan las importaciones, se tiene una mayor exposición cambiaria y también afecta que si se importa demasiado se tiene una dependencia externa alta lo que subirá los precios, luego será positivo.
+
+
+```{r Modelo Macro con efectos fijos}
+
+#Ya tenemos cargada la base de macros, y transformada en P0.
+# Estimamos con efectos fijos
+modelo_macro_fe <- feols(
+  PrecioU_oferta_usd ~ GDPpc_miles + Arancel + UrbGrow +
+    LPI + Inflacion + Import_PIB + FoodImp | Sub_categoria + Ano,
+  data = data_macro
+)
+
+summary(modelo_macro_fe) #Tabla
+
+```
+
+```{r Modelo Micro con efectos fijos}
+
+#Datos micro cargados y transformados en P0.
+
+modelo_micro_fe <- feols(
+  PrecioU_oferta_usd ~ MarcaPropia + Promocion + Cadena |
+    Categoria + Pais + Ano,
+  data = data_micro)
+
+summary(modelo_micro_fe) #Tabla
+
+modelo_micro_fesub <- feols(
+  PrecioU_oferta_usd ~ MarcaPropia + Promocion + Cadena |
+    Sub_categoria + Pais + Ano,
+  data = data_micro)
+
+summary(modelo_micro_fesub) #Tabla
+```
+
+
+Como comentario, se filtra para que no aparezcan sub_categoría, país, año porque son efectos fijos, no regresores. Por tanto, cuando Lasso muestra los regresores que seleccionó, no debe incluirlos.
+
+
+
+b. (1.0 puntos) Sobre los dos modelos planteados en la parte anterior, apliquen algún método de selección automática de variables aprendido en clases y compare con respecto a los resultados anteriores. Deben indicar cuáles variables descartan.
+
+```{r P2_b Selección automatica de variables, Modelo macro}
+
+#Utilizamos la base macro ya procesada en p0.
+data_macro_lasso <- data_macro %>%
+dplyr::select(PrecioU_oferta_usd, GDPpc_miles, Arancel, UrbGrow, LPI, Inflacion, Import_PIB, FoodImp) %>%
+na.omit()
+
+#Variable dependiente
+y_macro <- as.matrix(data_macro_lasso$PrecioU_oferta_usd) 
+
+#Matriz de regresores (incluye efectos fijos como dummies)
+X_macro <- model.matrix(PrecioU_oferta_usd ~ GDPpc_miles + Arancel + UrbGrow + LPI + Inflacion + Import_PIB + FoodImp , data = data_macro_lasso )[, -1] # quitamos el intercepto 
+
+#Estimamos con LASSO y validación cruzada
+set.seed(123) # semilla
+cv_macro_lasso <- cv.glmnet(X_macro, y_macro, alpha = 1, standardize = TRUE)
+
+#Lambda óptimo elegido por CV 
+cat("Lambda óptimo:", cv_macro_lasso$lambda.min, "\n")
+
+#Variables seleccionadas con coeficiente 0
+coef_macro <- coef(cv_macro_lasso, s = "lambda.min") #Extraemos el coeficiente
+selected_vars <- rownames(coef_macro)[which(coef_macro != 0)] 
+cat("Variables seleccionadas por LASSO:\n")
+print(selected_vars)
+
+```
+
+```{r Selección automatica de variables, Modelo micro}
+
+#Utilizamos la base micro ya procesada en p0.
+#Variable dependiente
+y_micro <- as.matrix(data_micro$PrecioU_oferta_usd)
+
+#Matriz de regresores (incluye efectos fijos como dummies)
+X_micro <- model.matrix(
+  PrecioU_oferta_usd ~ MarcaPropia + Promocion + Cadena +
+    factor(Sub_categoria) + factor(Pais) + factor(Ano),
+  data = data_micro
+)[, -1] # quitamos el intercepto
+
+#Estimación con LASSO y validación cruzada
+set.seed(123)  # semilla
+cv_micro_lasso <- cv.glmnet(X_micro, y_micro, alpha = 1, standardize = TRUE)
+
+#Lambda óptimo elegido por CV
+cat("Lambda óptimo:", cv_micro_lasso$lambda.min, "\n")
+
+##Variables seleccionadas con coeficiente 0
+coef_micro <- coef(cv_micro_lasso, s = "lambda.min")
+selected_vars_micro <- rownames(coef_micro)[which(coef_micro != 0)]
+#limpiamos interceptos de subcategoria, Pais y Ano
+selected_vars_micro_clean <- selected_vars_micro[!grepl("Intercept|Sub_categoria|Pais|Ano", selected_vars_micro)]
+cat("Variables seleccionadas por LASSO (solo micro, sin FE):\n")
+print(selected_vars_micro_clean)
+
+```
+Se descartan en variables macro: LPI, índice de inflación de precios del consumidor y FoodImp
+En variables micro se descartan: todas las cadenas que no fueron nombradas antes que dejó LASSO, es decir todas las cadenas menos: Cadena éxito, Cadena Jumbo, Cadena Mercadona, CadenaLider, Cadena Continente, Cadena PlazaVea, Cadena Sainsbury´s, CadenaMetro, CadenaOlímpica, CadenaPingo y CadenaTesco
+
+#### Pregunta 3
+
+(1.0 puntos) Usen al menos dos de los modelos de aprendizaje de máquinas que vimos en clases (MARS, kNN, regression tree o random forest) para generar un pronóstico de precios para un país, año, mes y produto dado. Comparen la capacidad de estos modelos con respecto a los de regresión lineal utilizando métricas de desempeño (MSE, RMSE o MAE). Discutan brevemente sus resultados y el modelo que recomendaría usar.
+```{r P3 base con subcategorias}
+
+#Filtramos data macro
+set.seed(5162) #Semilla
+data_ag <- data_macro %>%
+  select(Ano, Mes, Pais, Sub_categoria,PrecioU_oferta_usd,GDPpc_miles,Arancel,UrbGrow,Import_PIB) %>%
+  mutate(across(c(Pais, Sub_categoria), as.factor)) %>%
+  filter(is.finite(PrecioU_oferta_usd))
+
+
+#Utilizamos las variables significativas del modelo macro: Arancel,UrbGrow,Import_PIB y GDPpc_miles
+
+#División de datos 80 -20
+idx <- createDataPartition(data_ag$Sub_categoria, p = 0.8, list = FALSE)
+train_df <- data_ag[idx, ]
+test_df  <- data_ag[-idx, ]
+fml <- PrecioU_oferta_usd ~ .
+
+#Entrenamiento de modelos
+ctrl <- trainControl(method = "cv", number = 10, savePredictions = "final")
+modelo_lm   <- train(fml, data = train_df, method = "lm", trControl = ctrl)
+modelo_mars <- train(fml, data = train_df, method = "earth", trControl = ctrl, tuneGrid = expand.grid(degree=1, nprune=5:12))
+modelo_rf   <- train(fml, data = train_df, method = "rf", trControl = ctrl, tuneGrid = expand.grid(mtry = 2:4), ntree = 100)
+
+#Comparación de métricas de desempeño ---
+model_list <- list(LM = modelo_lm, MARS = modelo_mars, RF = modelo_rf)
+results <- resamples(model_list)
+summary(results)
+
+#Creación de Boxplots de Errores
+# a) Realizamos las predicciones en el set de prueba
+pred.lm   <- predict(modelo_lm,   newdata = test_df)
+pred.mars <- predict(modelo_mars, newdata = test_df)
+pred.rf   <- predict(modelo_rf,   newdata = test_df)
+
+#Calculamos los errores de predicción (valor real - predicción)
+error.df <- data.frame(
+  LM   = test_df$PrecioU_oferta_usd - pred.lm,
+  MARS = test_df$PrecioU_oferta_usd - pred.mars,
+  RF   = test_df$PrecioU_oferta_usd - pred.rf
+)
+
+#Generamos los boxplots
+# Primero, configuramos la ventana gráfica para mostrar dos gráficos juntos
+par(mfrow = c(1, 2)) 
+boxplot(error.df, main = "Errores de Predicción") #G1 Errores de predicción
+boxplot(abs(error.df), main = "Errores Absolutos de Predicción") #G2 Errores absolutos (para ver la magnitud del error)
+par(mfrow = c(1, 1)) # Reseteamos la configuración de la ventana gráfica
+```
+
+```{r Predicciones P3}
+
+# Predicción para un producto puntual y comparación.
+new_caso <- expand.grid(
+  Pais = factor("Chile", levels = levels(train_df$Pais)),
+  Sub_categoria = factor("Panes", levels = levels(train_df$Sub_categoria)),
+  Ano  = 2022, # Aqui agregamos los valores que si conocemos para ese periodo.
+  Mes  = 2,
+  Arancel = 1.0, 
+  UrbGrow = 0.6,
+  Import_PIB = 39.6,
+  GDPpc_miles = 15.405
+)
+
+predicciones <- sapply(model_list, function(modelo) predict(modelo, newdata = new_caso))
+
+obs <- data_ag %>%
+  filter(Ano==2022, Mes==2, Pais=="Chile", Sub_categoria=="Panes") %>%
+  slice(1) %>%
+  pull(PrecioU_oferta_usd) # Extraemos precio unitario final en usd.
+pred_puntual <- data.frame(
+  Modelo = names(predicciones),
+  Prediccion = predicciones,
+  Observado = obs
+)
+print(pred_puntual) # Comparamos
+```
+La regresión lineal y Random Forest rindieron de forma muy similar en validación superando a MARS en la predicción puntual Chile–Panes–2022-02, RF quedó prácticamente en el valor observado 4.8), MARS sobreestimó (5.99) y LM subestimó (3.14), por lo que, considerando precisión puntual y posibles no linealidades, es recomendable usar random forest.
+
+
+
+#### Pregunta 4
+En vez de pedir que generen una canasta para cada mes año y pais, sugeriría que eligan 3 canasta con al menos 5 productos de su elección y pronostiquen el precio para todos los paises en una fecha en particular. Asi tenemos más variación en las respuestas y dificultamos la copia.
+
+a. (1.0 puntos) Elaboren tres canastas de abarrotes con al menos cinco productos de sus preferencias para todos los países en alguna fecha cualquiera. Pronostiquen su precio corregido por moneda (USD) incluyendo variables explicativas relevantes. Comparen el precio de Chile con respecto al resto de países. 
+
+```{r P4a}
+
+
+#Definimos las canastas de abarrotes que utilizaremos 
+canasta_basica <- c("Arroz", "Fideos", "Aceite", "Panes", "Huevos", "Leches")
+canasta_carnes_verduras <- c("Carne roja", "Carne blanca", "Pescados", "Tomates", "Lechuga", "Papas")
+canasta_aseo_hogar <- c("Detergentes", "Cloro", "Lavalozas", "Limpia pisos", "Aromatizador")
+
+# Creamos un dataframe con la definición de las canastas, esto para que luego se unan a los atributos correspondientes.
+definicion_canastas <- data.frame(
+  Sub_categoria = c(canasta_basica, canasta_carnes_verduras,canasta_aseo_hogar),
+  Canasta = rep(c("Básica", "Carnes y Verduras", "Aseo del Hogar"), 
+  times = c(length(canasta_basica), length(canasta_carnes_verduras),
+            length(canasta_aseo_hogar)))
+)
+
+# Creamos los escenarios de predicción, como vamos a predecir los precios para Marzo de 2022 en todos los países, entonces necesitamos todos los valores macros correspondientes a ese periodo, y lo agregamos mediante atributos referenciados para cada pais.
+escenario_prediccion <- expand.grid(
+  Sub_categoria = definicion_canastas$Sub_categoria,
+  Pais          = levels(train_df$Pais),
+  Ano           = 2022,
+  Mes           = 3) %>%
+  mutate(
+    GDPpc_miles = case_when(
+      Pais == "Argentina" ~ 13.935,
+      Pais == "Chile"     ~ 15.405,
+      Pais == "Colombia"  ~ 6.680,
+      Pais == "Perú"      ~ 7.350,
+      Pais == "Portugal"  ~ 24.620,
+      Pais == "España"    ~ 30.270,
+      Pais == "UK"        ~ 46.063
+    ),
+    Arancel = case_when(
+      Pais == "Argentina" ~ 11.9,
+      Pais == "Chile"     ~ 1.0,
+      Pais == "Colombia"  ~ 3.5,
+      Pais == "Perú"      ~ 1.1,
+      Pais == "Portugal"  ~ 1.9,
+      Pais == "España"    ~ 1.9,
+      Pais == "UK"        ~ 1.1
+    ),
+    UrbGrow = case_when(
+      Pais == "Argentina" ~ 0.3,
+      Pais == "Chile"     ~ 0.6,
+      Pais == "Colombia"  ~ 1.4,
+      Pais == "Perú"      ~ 1.4,
+      Pais == "Portugal"  ~ 1.5,
+      Pais == "España"    ~ 1.0,
+      Pais == "UK"        ~ 1.2
+    ),
+    Import_PIB = case_when(
+      Pais == "Argentina" ~ 15.3,
+      Pais == "Chile"     ~ 39.6,
+      Pais == "Colombia"  ~ 27.9,
+      Pais == "Perú"      ~ 28.5,
+      Pais == "Portugal"  ~ 51.9,
+      Pais == "España"    ~ 38.9,
+      Pais == "UK"        ~ 35.3
+    )
+  )
+
+
+# Pronosticar precios usando Random Forest
+escenario_prediccion$Precio_Predicho_USD <- predict(model_list$RF, newdata = escenario_prediccion)
+
+# Calcular el costo total de cada canasta por país
+costo_final_canastas <- escenario_prediccion %>%
+  left_join(definicion_canastas, by = "Sub_categoria") %>%
+  group_by(Pais, Canasta) %>% # En este caso debemos sumar el precio de cada elemento para crear el costo de la canasta.
+  summarise(Costo_Total_USD = sum(Precio_Predicho_USD), .groups = 'drop') 
+
+# Vemos los resultados y comparar
+cat("Pronóstico del Costo Total por Canasta y País (en USD):\n")
+print(costo_final_canastas)
+
+# Graficamos para comparar.
+ggplot(costo_final_canastas, aes(x = reorder(Pais, Costo_Total_USD), y = Costo_Total_USD, fill = Pais)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ Canasta, scales = "free_x") +
+  coord_flip() +
+  labs(
+    title = "Costo Pronosticado de Canastas de Abarrotes por País (Marzo 2022)",
+    x = "País",
+    y = "Costo Total Estimado (USD)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+```{r Comparación con costo observado y pronosticado}
+# Calcular el costo OBSERVADO de cada canasta.
+costo_observado_ajustado <- data_ag %>%
+  filter(Ano == 2022, Mes %in% c(2, 3)) %>% # Tomamos ambos meses porque para el caso de chile, tiene sus productos en febrero.
+  group_by(Pais, Sub_categoria) %>%
+  # Promediamos el precio de cada producto en los dos meses
+  summarise(Precio_Promedio_Obs = mean(PrecioU_oferta_usd, na.rm = TRUE), .groups = 'drop') %>%
+  # sumamos los precios promedio para obtener el costo de la canasta
+  right_join(definicion_canastas, by = "Sub_categoria") %>%
+  group_by(Pais, Canasta) %>%
+  summarise(Costo_Observado_USD = sum(Precio_Promedio_Obs, na.rm = TRUE), .groups = 'drop')
+
+#Unimos la tabla de pronósticos con la de costos observados.
+tabla_comparativa_ajustada <- costo_final_canastas %>%
+  left_join(costo_observado_ajustado, by = c("Pais", "Canasta")) %>%
+  rename(Costo_Pronosticado_USD = Costo_Total_USD)
+
+#Printeamos
+cat("Tabla Comparativa: Costo Pronosticado vs. Costo Observado (Promedio Feb-Mar 2022):\n")
+print(tabla_comparativa_ajustada)
+
+```
+
+En USD de mercado para marzo de 2022, Chile se ubica en la mitad alta del ranking: sus costos pronosticados por canasta son mayores que los de Argentina y Colombia y menores que los de UK y Portugal, quedando por encima de España en las tres canastas.
+
+
+b. (0.5 puntos) Utilicen las mismas canastas de abarrotes y pronostiquen su precio corregido por moneda (USD) y por paridad de poder adquisitivo (ppa) incluyendo variables explicativas relevantes. Comparen el precio de Chile con respecto al resto de países. Expliquen brevemente en qué se diferencia esta métrica en comparación a solo corregir por moneda.
+
+
+Tendremos que convertir la base con respecto a ppa, ya que ya corregimos por moneda. La base ppa fue procesada en p0 al igual que tipo de cambio.
+
+
+```{r P4b2 Transformamos y entrenamos.}
+
+set.seed(5162) #Semilla
+
+# Preparar la base de datos para corregir por ppa y dolar.
+base_int <- data_macro %>%
+  left_join(Tipo_Cambio, by = c("Pais", "Ano", "Mes")) %>%
+  left_join(ppa, by = c("Pais", "Ano")) %>%
+  mutate(Precio_Int = PrecioU_oferta_usd / (TipoCambio * Factor_PPA)) %>%
+  filter(is.finite(Precio_Int)) %>%
+  select(Ano, Mes, Pais,Sub_categoria,GDPpc_miles,Arancel,UrbGrow,Import_PIB, Precio_Int) %>%
+  mutate(across(c(Pais, Sub_categoria), as.factor))
+
+# Dividir datos y entrenar nuevamente pero con las correciones por ppa y dolar.
+idx   <- createDataPartition(base_int$Sub_categoria, p = 0.8, list = FALSE)
+train <- base_int[idx, ]
+fml   <- Precio_Int ~ .
+
+modelo_rf_int <- train(
+  fml, data = train, method = "rf",
+  trControl = trainControl("cv", number = 5), # 5 folds para mayor rapidez
+  tuneGrid = expand.grid(mtry = 2:4),
+  ntree = 100 # Es el numero de arboles con los cuales el codigo no se demoraba +1 hora.
+)
+```
+
+
+```{r Definición de canasta y escenario de predicción.}
+#Definimos la misma canasta que en p4a y utilizamos el mismo escenario de predicción.
+canasta_basica <- c("Arroz", "Fideos", "Aceite", "Panes", "Huevos", "Leches")
+canasta_carnes_verduras <- c("Carne roja", "Carne blanca", "Pescados", "Tomates", "Lechuga", "Papas")
+canasta_aseo_hogar <- c("Detergentes", "Cloro", "Lavalozas", "Limpia pisos", "Aromatizador")
+
+#definición de las canastas, esto para que luego se unan a los atributos correspondientes.
+definicion_canastas <- data.frame(
+  Sub_categoria = c(canasta_basica, canasta_carnes_verduras,canasta_aseo_hogar),
+  Canasta = rep(c("Básica", "Carnes y Verduras", "Aseo del Hogar"), 
+  times = c(length(canasta_basica), length(canasta_carnes_verduras),
+            length(canasta_aseo_hogar))))
+
+escenario_prediccion <- expand.grid(
+  Sub_categoria = definicion_canastas$Sub_categoria,
+  Pais          = levels(train$Pais),
+  Ano           = 2022,
+  Mes           = 3) %>%
+  mutate(
+    GDPpc_miles = case_when(
+      Pais == "Argentina" ~ 13.935,
+      Pais == "Chile"     ~ 15.405,
+      Pais == "Colombia"  ~ 6.680,
+      Pais == "Perú"      ~ 7.350,
+      Pais == "Portugal"  ~ 24.620,
+      Pais == "España"    ~ 30.270,
+      Pais == "UK"        ~ 46.063
+    ),
+    Arancel = case_when(
+      Pais == "Argentina" ~ 11.9,
+      Pais == "Chile"     ~ 1.0,
+      Pais == "Colombia"  ~ 3.5,
+      Pais == "Perú"      ~ 1.1,
+      Pais == "Portugal"  ~ 1.9,
+      Pais == "España"    ~ 1.9,
+      Pais == "UK"        ~ 1.1
+    ),
+    UrbGrow = case_when(
+      Pais == "Argentina" ~ 0.3,
+      Pais == "Chile"     ~ 0.6,
+      Pais == "Colombia"  ~ 1.4,
+      Pais == "Perú"      ~ 1.4,
+      Pais == "Portugal"  ~ 1.5,
+      Pais == "España"    ~ 1.0,
+      Pais == "UK"        ~ 1.2
+    ),
+    Import_PIB = case_when(
+      Pais == "Argentina" ~ 15.3,
+      Pais == "Chile"     ~ 39.6,
+      Pais == "Colombia"  ~ 27.9,
+      Pais == "Perú"      ~ 28.5,
+      Pais == "Portugal"  ~ 51.9,
+      Pais == "España"    ~ 38.9,
+      Pais == "UK"        ~ 35.3
+    )
+  )
+
+```
+
+
+
+```{r p4b Pronostico y comparación final.}
+
+#Pronosticar, calcular costos y comparar con lo observado
+tabla_comparativa_final <- escenario_prediccion %>%
+  #Pronosticar precios
+  mutate(Precio_Predicho_Int = predict(modelo_rf_int, newdata = .)) %>%
+  left_join(definicion_canastas, by = "Sub_categoria") %>%
+  #Calcular costo pronosticado de la canasta
+  group_by(Pais, Canasta) %>%
+  summarise(Costo_Pronosticado_Int = sum(Precio_Predicho_Int), .groups = "drop") %>%
+  #Unir con el costo observado
+  left_join(
+    base_int %>%
+    filter(Ano == 2022, Mes %in% c(2, 3)) %>%
+    group_by(Pais, Sub_categoria) %>%
+    summarise(Precio_Promedio_Int = mean(Precio_Int, na.rm = TRUE),.groups ="drop") %>%
+    inner_join(definicion_canastas, by = "Sub_categoria") %>%
+    group_by(Pais, Canasta) %>%
+    summarise(Costo_Observado_Int = sum(Precio_Promedio_Int, na.rm = TRUE),.groups = "drop"),by = c("Pais", "Canasta")) %>%
+  #Añadir la comparación con Chile
+    group_by(Canasta) %>%
+    mutate(Ratio_vs_Chile = round(Costo_Pronosticado_Int / Costo_Pronosticado_Int[Pais == "Chile"], 2)) %>%
+  ungroup() %>%
+  arrange(Canasta, desc(Costo_Pronosticado_Int))
+
+#Printeamos
+kable(tabla_comparativa_final,caption = "Comparación de Costos de Canastas (Pronosticado vs. Observado) en Int$",digits = 2)
+```
+En Int$, el orden relativo se invierte respecto de USD: con Chile como base (=1,00), Perú y Colombia resultan más caros en Aseo del Hogar y en la canasta Básica, y también superan a Chile en Carnes y Verduras, mientras que España y UK quedan por debajo y Portugal se mantiene cercano o levemente superior. Esto ocurre porque corregir solo por moneda convierte a USD al tipo de cambio de mercado (niveles nominales), mientras que el ajuste por PPA reescala por el nivel de precios interno para que una misma canasta represente igual poder de compra, entregando una comparación real que puede cambiar el ranking observado en USD.
+
+
+
+
+
+## Resumen
+
+(0.5 puntos) Resuman ejecutivamente sus resultados y provean un resumen conciso de los aprendizajes y sugerencias relevantes.
+
+```{r Resumen}
+#Summary
+```
+
+
+P0
+
+En esta pregunta se prepararon los datos, para esto primero se cargó una base con el tipo de cambio en dólares para pasar todo a una misma moneda. Además se agregó una base con 7 variables macro que posteriormente se usarán como variables explicativas. Posteriormente se transforma la base para usar solo sub categoría ya que es representativo de los productos y es lo que realmente interesa. Además de definir un precio que es igual al de oferta cuando hay oferta y si no es el precio normal. Luego de esto se normalizaron los precios por el volumen y se eliminaron productos que quedaron con precios erróneos: especias entre otros. Finalmente se aseguró el hecho de que estén las mismas subcategorías en todos los países.
+Luego de todo esto se agregó una base con los PPA que serán usados en preguntas posteriores.
+
+P1
+
+Una vez que se prepararon los datos en la pregunta 0, se comenzó por explorar los datos, primero se graficó la dispersión de precios promedios por subcategoría. Luego se filtró para ver de forma más clara en 3 países.
+Al graficar el precio promedio en los 7 países se vio que el país más caro es UK y el más barato es Colombia.
+Pero también se hizo un ranking por producto y año, dado que si se promedia se le está dando más peso a productos más caros, en cambio si se asigna un número del 1 al 7 donde el 1 es al más barato y se suman todas las subcategorías se tendrá el país más barato y caro por cantidad de productos.
+
+
+P2
+
+a) Primero se propuso una especificación con variables macroecoómicas. Las cuales son GDPpc: PIB per-cápita, LPI: nivel de logística del país, FoodImp: que porcentaje de las importaciones del país corresponden a comida, UrbGrow: crecimiento de la población urbana, Arancel: tasa arancelaria a las importaciones, Import_PIB: porcentaje del GDP que es la importación, Inflation: índice de inflación de precios del consumidor. Y dio que las variables significativas eran arancel, GDP, UrbGrow y FoodImp.
+Es esperable que a mayor GDPpc mayor sea el precio de los alimentos pues los costos suben, hay mayores sueldos, costos de producción que se cargan en el precio final. La variable FoodImp tiene un beta positivo pues a mayor porcentaje importado de alimentos se está más expuesto a shocks externos. Mayor UrbGrow(crecimiento urbano), lleva a menor precio pues al haber mayor competencia y acceso a mercados en las ciudades, los precios caen.
+
+Luego se propone una especificación con variables propias de la base entregada donde dio que era significativo promoción con signo negativo pues cuando hay promoción bajan los precios, marca propia también con signo negativo pues en general las marcas propias tienen precios menores y dieron algunas cadenas significativas y con el signo esperado. Por ejemplo Jumbo dio positivo pues en general tiene mayores precios y Mercadonna negativo pues es una cadena conocida por sus bajos precios.
+
+b) Tras aplicar el método LASSO para los modelos se eligen las siguientes variables:
+Modelo macro: GDP, UrbGrowth, Arancel y Import_PIB. Las 3 primeras fueron explicadas antes. En el caso de Import_PIB es el porcentaje del PIB que son las importaciones. Es esperable que a mayor importación, mayor sea el precio pues se depende más de shocks externos.
+Modelo micro: MarcaPropia1, Promocion1, Cadena éxito, Cadena Jumbo, Cadena Mercadona, CadenaLider, Cadena Continente, Cadena PlazaVea, Cadena Sainsbury´s, CadenaMetro, CadenaOlímpica, CadenaPingo y CadenaTesco. Es decir, es explicativo desde que cadena se está vendiendo en el precio de los productos. Puede ser negativo el signo si es que las cadenas son más baratas o positivo si son más caras.
+
+Así mismo en el caso de MarcaPropia es negativo pues en general las marcas propias tienen productos de precios más bajos y promoción también es negativo pues baja los precios.
+
+
+P3. En esta parte del codigo se arma el set con variables de tiempo, país, subcategoría y macro, se divide en entrenamiento/prueba y se entrena regresión lineal, MARS y Random Forest con validación cruzada para comparar RMSE/MAE/R². Luego se predice en el set de prueba para evaluar sesgo y magnitud del error con boxplots y, por último, se genera una predicción puntual para contrastar cada modelo con el valor observado y elegir el más preciso.
+
+
+Se puede observar que la regresión lineal y random forest presentaron un desempeño muy similiar LM obtuvo MAE = 4.9, RMSE = 14.80 y un R² = 0.39 y Random forets obtuvo MAE = 5.05, RMSE = 14.02 y R² = 0.45 los cuales son claramente superiores a MARS que obtuvo MAE = 6.27, RMSE = 15.31 y y un R² = 0.34, lo que sugiere que, en promedio, el modelo lineal y random forest captura mejor la variación del precio que MARS. En cuanto a la prediccion para Chile–Panes–2022-02, Random Forest ajustó casi  el valor observado (4.8), mientras MARS sobreestimó (5.99) y la regresión lineal subestimó (3.14), por lo que, considerando precisión puntual y la posibilidad de no linealidades, es recomendable utilizar Random Forest para pronosticar.
+
+p4
+a) El código arma tres canastas, predice precios unitarios en USD para mar-2022 con Random Forest incorporando variables macro (PIB per cápita, arancel, urbanización, importaciones), y suma por país para comparar el costo total. Luego contrasta esos costos pronosticados con los costos observados para evaluar sesgo.
+
+Los resultados indican que las tres canastas valoradas en USD sitúan a Portugal y al UK en como las canastas mas caras, mientras que Argentina y España como las canastas mas baratas, Chile aparece en una posición intermedia‑alta, por encima de España pero por debajo de Portugal, Peru y UK. Al comparar con los valores observados se aprecia una leve sobreestimación general del modelo pero mantiene el orden relativo entre países. Podemos observa que el nivel de precios de Peru en las canastas “Básica”, “Carnes y Verduras” y “Aseo del Hogar” es relativamente alto dentro de los paises latinoamericano y menor en comparacion con los paises europeos en ese periodo, a exepcion de España.
+
+b)
+En esta pregunta se reentrenó y aplicó un modelo para precios en dólares internacionales (Int$), calculados dividiendo el precio en USD por el factor PPP, lo que elimina diferencias de nivel de precios entre países; así, la comparación refleja poder de compra relativo y no solo tipo de cambio de mercado
+
+Podemos observa que en dólares internacionales (Int$), el ranking se reordena frente a la comparación en USD: tomando a Chile como referencia (1,00), en la canasta de Aseo del Hogar Perú (1,31) y Colombia (1,29) se ubican por encima de Chile, mientras que Portugal (1,08) queda levemente arriba y España (0,76), UK ≈0,78) y Argentina (0,89) aparecen por debajo. En la canasta Básica, Colombia (1,36) y Perú (1,28) también superan a Chile, Portugal queda cercano (1,03) y España (0,81), UK (0,79) y Argentina (0,99) se sitúan por debajo. Finalmente, en Carnes y Verduras, Colombia (1,34) y Perú (1,25) vuelven a estar por encima, Portugal queda prácticamente igual (1,10) y España (0,81), UK (0,75) y Argentina (0,90) se ubican por debajo. Esta reordenación del ranking se entiende por el ajuste de paridad de poder adquisitivo, que estandariza los niveles de precios internos de cada economía y permite comparar poder de compra real entre países, corrigiendo sesgos de mirar solo el tipo de cambio de mercado.
+
+
+## Anexos
+
+Documenta acá cualquier otro adicional que consideres útil tener de referencia. 
+
+
+## Roles
+
+Todos los participantes del grupo de trabajo declaran que su participación queda bien reflejada en la siguiente tabla.  
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+
+
+roles <- data.frame(
+  integrantes = c("Lamich", "Muñoz", "Venegas"),
+  P1 = c("interpretación", "-", "código"),
+  P2 = c("código e interpretación", "-", "códigO"),
+  P3 = c("Interpretación", "codigo", "código"),
+  P4 = c("codigo e interpretación", "codigo", "código"),
+  Resumen = c("interpretación", "Interpretación", "-")
+)
+
+roles %>%
+  kbl(caption = "**Tabla N+1:** Roles de los Participantes en el trabajo") %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+```
+
+
+Asimismo, los participantes del grupo de trabajo declaran que el uso de herramientas de inteligencia artificial (IA) queda bien reflejada en la siguiente tabla.
+```{r, echo=FALSE}
+iarole <- data.frame(
+  preguntas = c("P1", "P2", "P3", "P4", "Resumen"), 
+  uso = c("Ayudar a idear y generar graficos", 
+          "", 
+          "Encontrar errores en el codigo", 
+          "Encontrar errores en el codigo y ayuda a optimizar la comparativa de pronosticos y observados", 
+          "-"), 
+  herramienta = c("Chat GPT-5", 
+                  "Chat GPT-5", 
+                  "Chat GPT-5", 
+                  "Chat GPT-5", 
+                  "-")
+)
+
+iarole %>%
+  kbl(caption = "**Tabla N+2:** Rol de la IA en el trabajo") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
