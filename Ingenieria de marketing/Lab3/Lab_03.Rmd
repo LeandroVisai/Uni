@@ -35,6 +35,12 @@ library(kableExtra)
 ```
 
 
+```{r}
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Lab3") 
+
+
+```
+
 ```{r, echo=FALSE}
 datadic <- read.csv("margarinedatadic.csv", fileEncoding = "Latin1", header=TRUE, sep=";")
 
@@ -216,17 +222,140 @@ Donde $B(\cdot)$ es la función Beta, $x_i$ es la cantidad de veces que el clien
 Escriba la función de verosimilitud para un modelo beta binomial para toda la población y grafique la distribución de la probabilidad de comprar en pote ($\theta$) en la población
 ```{r}
 # modelo beta binomial
+#Volvemos a llamar a margarine, porque antes le llamaron con un nivel de agregación mayor.
+
+# Usaremos el archivo margarine.csv que se describe en el Lab 03
+margarina <- read.csv("margarine.csv", header=TRUE)
+
+# --- Agregamos los datos para obtener x_i y m_i por cliente ---
+aggdata <- margarina %>%
+  # Creamos la columna 'format' para facilitar el conteo
+  mutate(format = if_else(choice %in% c(7,8,9,10), "pote", "pan")) %>%
+  group_by(hhid) %>%
+  summarise(
+    m = n(),          # Total de compras
+    x = sum(format == "pote")   # Conteo de compras en pote
+  ) %>%
+  ungroup()
+
 ```
+
+```{r}
+# Log-vero
+
+ll.beta.binom <- function(params, x, m) {
+  # 1. Extraemos los parámetros alpha y beta. Usamos exp() para
+  #    asegurar que siempre sean positivos, una práctica estándar
+  #    vista en los Rmd de las sesiones.
+  alpha <- exp(params[1])
+  beta <- exp(params[2])
+  
+  # 2. Calculamos el log-likelihood para todos los clientes a la vez.
+  #    Esta línea es la traducción directa de la fórmula a R.
+  log_likelihood <- lchoose(m, x) + lbeta(alpha + x, beta + m - x) - lbeta(alpha, beta)
+  
+  # 3. Sumamos el log-likelihood de todos los clientes y devolvemos el negativo.
+  #    La función optim() de R busca minimizar, así que le entregamos el
+  #    valor negativo para que, en la práctica, maximice nuestra función.
+  return(-sum(log_likelihood))
+}
+```
+
+```{r Graficamos}
+# --- Estimar los parámetros para toda la población ---
+params.start <- c(0.01, 0.01) # Valores iniciales para que el optimizador comience
+mle.bb <- optim(par = params.start,
+                fn = ll.beta.binom,
+                x = aggdata$x,
+                m = aggdata$m,
+                method = "BFGS")
+```
+
+```{r}
+# Obtenemos los parámetros estimados alpha y beta
+alpha.pop <- exp(mle.bb$par[1])
+beta.pop <- exp(mle.bb$par[2])
+
+cat(paste("\nParámetros estimados para la población:\nAlpha =", round(alpha.pop, 3), "\nBeta =", round(beta.pop, 3), "\n"))
+
+
+# Graficamos la distribución de la probabilidad (theta) ---
+ggplot(data.frame(theta = c(0, 1)), aes(x = theta)) +
+  stat_function(fun = dbeta, args = list(shape1 = alpha.pop, shape2 = beta.pop), 
+                geom = "line", color = "dodgerblue", linewidth = 1.5) +
+  labs(
+    title = "Distribución de la Preferencia (θ) por Margarina en Pote",
+    subtitle = "Estimada para toda la población con un Modelo Beta-Binomial",
+    x = "Probabilidad (θ) de comprar en pote",
+    y = "Densidad"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
 
 ### Pregunta 2
 
 Repita el procedimiento anterior para dos segmentos cualquiera y compare las distribuciones de $\theta$ para esos dos segmentos
 ```{r}
 # modelo beta binomial, dos segmentos
+#Recuremamos la base
+margarina <- read.csv("margarine.csv", header = TRUE)
+
+# Agrupamos por 'hhid' y 'cluster' para mantener esa columna
+aggdata <- margarina %>%
+  mutate(format = if_else(choice %in% c(7,8,9,10), "pote", "pan")) %>%
+  group_by(hhid, cluster) %>% # Agrupamos por cluster desde el principio
+  summarise(
+    m = n(),
+    x = sum(format == "pote"),
+    .groups = 'drop' 
+  )
+
+segmento_3_data <- aggdata %>% filter(cluster == 3)
+segmento_10_data <- aggdata %>% filter(cluster == 10)
+
+# Estimar para el Segmento 3
+params.start <- c(0.01, 0.01)
+mle.s3 <- optim(par = params.start, fn = ll.beta.binom,
+                x = segmento_3_data$x, m = segmento_3_data$m, method = "BFGS")
+alpha.s3 <- exp(mle.s3$par[1])
+beta.s3 <- exp(mle.s3$par[2])
+
+# Estimar para el Segmento 10
+mle.s10 <- optim(par = params.start, fn = ll.beta.binom,
+                 x = segmento_10_data$x, m = segmento_10_data$m, method = "BFGS")
+alpha.s10 <- exp(mle.s10$par[1])
+beta.s10 <- exp(mle.s10$par[2])
+
+cat(paste("\nSegmento 3:  Alpha =", round(alpha.s3, 3), " | Beta =", round(beta.s3, 3)))
+cat(paste("\nSegmento 10: Alpha =", round(alpha.s10, 3), " | Beta =", round(beta.s10, 3), "\n"))
+```
+
+```{r Grafico}
+theta_vals <- seq(0, 1, length.out = 500)
+dist_comparativa <- data.frame(
+  theta = rep(theta_vals, 2),
+  densidad = c(dbeta(theta_vals, alpha.s3, beta.s3),
+               dbeta(theta_vals, alpha.s10, beta.s10)),
+  Segmento = rep(c("Cluster 3", "Cluster 10"), each = 500)
+)
+
+
+ggplot(dist_comparativa, aes(x = theta, y = densidad, color = Segmento)) +
+  geom_line(linewidth = 1.2) +
+  labs(
+    title = "Comparación de la Preferencia (θ) por Margarina en Pote",
+    subtitle = "Segmentos de Clientes 3 vs. 10",
+    x = "Probabilidad (θ) de comprar en pote",
+    y = "Densidad",
+    color = "Segmento"
+  ) +
+  theme_minimal(base_size = 14)
 ```
 
 ### Pregunta 3
 
 En <span class="underline">función de los resultados de la pregunta 2</span>, comente cuál de los segmentos parece tener una mejor probabilidad de comprar en pote. 
 
-
+Al observar el gráfico, la curva de preferencia del Cluster 10 (roja) está claramente desplazada hacia la derecha, lo que indica que sus miembros tienen una preferencia más alta y consistente por el formato en pote. Mientras que el Cluster 3 muestra una preferencia más variada, el Segmento 10 es un público más homogéneo y con mayor propensión a elegir este formato, convirtiéndolo en el objetivo más atractivo.
