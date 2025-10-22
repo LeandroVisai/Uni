@@ -1,0 +1,212 @@
+---
+title:  'Laboratorio 4. IN5162 - Semestre Primavera 2025'
+author: 'Agregar Nombre de los Estudiantes'
+date:   '22 de Octubre de 2025'
+output:
+  html_document:
+    df_print: paged
+    theme: simplex
+    highlight: tango
+    toc: yes
+encoding: UTF-8
+---
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr) 
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(modelsummary)
+library(mlogit)
+```
+
+# Preliminares
+
+Después de varias semanas mirando diversas variaciones de modelos de elección discreta usando datos de la categoría yogurt, su paciencia está apunto de desbordar. Como ya está avanzado el semestre, tampoco es que tenga tanto entusiasmo para ejercitar las manos en un contexto completamente diferente. Como un compromiso entre estas dos fuerzas internas, se ha decidido a investigar cómo un modelo logit puede ayudar a describir las compras en otra categoría. Después de barajar algunas alternativas, se elige estudiar las compras de ketchup, que de algún modo le permite rendir tributo a esas largas tardes de estudio en que no había nada más que comer que papas fritas con ketchup.
+
+Para el análisis, se dispone de un panel de 1956 hogares que realizan compras en la categoría en un período de aproximadamente dos años. La categoría contempla tres marcas de tamaños comparables:
+
+<center>
+
+```{r, out.width=100, echo=FALSE}
+include_graphics(c('heinz.jpg', 'hunts.jpg', 'delmonte.jpg', 'storebrand.jpg'))
+```
+
+</center>
+
+-   **Heinz**, el lider del mercado con una participación del 51%.
+-   **Hunts**, un cercano competidor a Heinz con una participación del 21%.
+-   **Del Monte**, que entró recientemente al mercado con una participación del 5% .
+-   **Marca propia**, con precios menores y una participación del 23%.
+
+```{r bases, warning=FALSE}
+#Se cargan los datos y con visualizan las primeras filas
+ketchup <- read.csv("ketchup.csv", header=TRUE)
+head(ketchup)
+```
+
+El set de datos contiene las siguientes variables:
+
+-   Ketchup.hid: Identificador del hogar.
+-   Ketchup.id: Correlativo del número de compra para un hogar dado.
+-   Ketchup.choice: Marca elegida en cada ocasión de compra.
+-   price.heinz: Precio al que estaba la marca Heinz.
+-   price.hunts: Precio al que estaba la marca Hunts.
+-   price.delmonte: Precio al que estaba la marca Del Monte.
+-   price.stb: Precio al que estaba la marca propia.
+
+# Desarollo del laboratorio {.tabset}
+
+## Estimación nativa
+
+Partimos escribiendo la verosimilitud del modelo.
+
+```{r}
+buyheinz <- ifelse(ketchup$Ketchup.choice=='heinz', 1, 0)
+buyhunts <- ifelse(ketchup$Ketchup.choice=='hunts', 1, 0)
+buydlmte <- ifelse(ketchup$Ketchup.choice=='delmonte', 1, 0)
+buystore <- ifelse(ketchup$Ketchup.choice=='stb', 1, 0)
+
+xheinz <- as.matrix(ketchup$price.heinz)
+xhunts <- cbind( rep(1, nrow(ketchup)), ketchup$price.hunts)
+xdlmte <- cbind( rep(1, nrow(ketchup)), ketchup$price.delmonte)
+xstore <- cbind( rep(1, nrow(ketchup)), ketchup$price.stb)
+  
+loglikel <- function(beta){
+  # exponential of the utility for each brand
+  expVhnz <- exp(xheinz %*% beta[4])		
+	expVhnt <- exp(xhunts %*% beta[c(1,4)])
+	expVdmt <- exp(xdlmte %*% beta[c(2,4)])
+	expVstb <- exp(xstore %*% beta[c(3,4)])
+	
+	# sum exponential utilities, we need it as the denominador of purchase probability
+	denom <- expVhnz+expVhnt+expVdmt+expVstb		
+
+	Prhnz <- expVhnz / denom			# purchase probability of yop-bran
+	Prhnt <- expVhnt / denom			# purchase probability of dan-bran
+	Prdmt <- expVdmt / denom			# purchase probability of hil-bran
+	Prstb <- expVstb / denom			# purchase probability of wwt-bran
+
+	# individual level contribution to the likelihood
+	lli  <- log( (Prhnz*buyheinz)+(Prhnt*buyhunts)+(Prdmt*buydlmte)+(Prstb*buystore) ) 
+	
+	# total likelihood - sum over all individual contributions
+	return(-sum(lli))        						
+}
+```
+
+y luego maximizamos la verosimilitud y reportamos los estimadores máximo verosímiles.
+
+```{r, message=FALSE}
+beta.start <- 0.01*rep(1,4)
+mymle <- optim(par=beta.start, fn=loglikel, hessian=TRUE, method="BFGS", 
+               control = list(maxit=1000, trace=TRUE, REPORT=10))
+
+# very basic reporting
+mle <- mymle$par
+se  <- sqrt(diag(solve(mymle$hessian)))
+
+estimates <- cbind(mle,se)
+rownames(estimates) <- c('hunts','delmonte','store brand','price') 
+
+estimates%>%
+  kbl(digits=3) %>% 
+  kable_classic(full_width = F, html_font = "Trebuchet MS") 
+```
+
+## mlogit
+
+Hasta el momento solo hemos considerado interceptos por marca y coeficientes genéricos que son común a todas las marcas $j$ e individuos $i$. Sin embargo, la librería *mlogit* admite especificaciones más complejas en que la utilidad dependa de los individuos, de las marcas o de combinaciones de ellas:
+
+$$ v_{ij} =  \alpha_j + \beta x_{ij} + \nu t_j + \gamma_j z_i + \delta_j w_{ij}$$ Para incluir estas variantes, tenemos que especificar de qué depende cada parámetros a traves de los *pipes* de la fórmula:
+
+-   En la primera casilla se incluyen variables que depende de la alternativa y que tienen un coeficiente común.
+-   En la segunda casilla se incluyen variables que tienen un coeficiente que depende de la alternativa.
+
+Por ejemplo:
+
+```{r eval=FALSE}
+logit.v1 <- mlogit(choice ~ precio )
+logit.v2 <- mlogit(choice ~ 1 | precio )
+```
+
+-   En logit.v1, tendremos un coeficiente de precio (más los interceptos por marca)
+-   En logit.v2, tendremos un coeficiente de precio para cada alternativa (más los interceptos por marcas).
+
+La librería *mlogit* pemite también agregar especificaciones en una tercerca casilla, pero no las exploraremos en este laboratorio (para más detalle, revisar [la documentación de mlogit](https://www.jstatsoft.org/article/view/v095i11))
+
+A continuación trabajaremos en complejizar el modelo para incluir algunas de estas componentes. En principio el set de datos no tienen ninguna variable que caracterice a los individuos. Sin embargo hay varias métricas que pueden considerarse. Por simplicidad nos vamos concentrar solo en el volumen de compras: hay algunos hogares que comprar más ketchup y otros que compran menos, y nos gustaría ver cómo los parámetros
+
+Creamos la variable que cuenta la intensidad de compras de cada hogar.
+
+```{r}
+customers <- ketchup %>%
+  group_by(Ketchup.hid) %>%
+  summarise(npur = n())
+ketchup <- merge(x=ketchup, y=customers, by='Ketchup.hid', all.x = T)
+head(ketchup)
+```
+
+Formateamos los datos
+
+```{r}
+levels(ketchup$Ketchup.choice) <- c('heinz', 'hunts', 'delmonte', 'stb')
+ketchuptmp <- data.frame(ch=ketchup$Ketchup.choice,
+                        price.heinz=ketchup$price.heinz, price.hunts=ketchup$price.hunts,
+                        price.delmonte=ketchup$price.delmonte, price.stb=ketchup$price.stb,
+                        npur = ketchup$npur)
+
+#format the data
+ketchup.ml <- mlogit.data(ketchuptmp, shape="wide", varying=2:5, choice="ch")
+head(as.data.frame(ketchup.ml))
+```
+
+Estimamos varias variantes del modelo logit, que nos permiten estudiar distintas facetas de comportamiento.
+
+```{r}
+ketchuplogit.v1 <- mlogit(ch ~ price, data = ketchup.ml)
+ketchuplogit.v2 <- mlogit(ch ~ 1 | price, data = ketchup.ml)
+ketchuplogit.v3 <- mlogit(ch ~ 1 | npur + price, data = ketchup.ml)
+
+modelsummary(list('M1'=ketchuplogit.v1, 'M2'=ketchuplogit.v2, 'M3'=ketchuplogit.v3),
+             estimate  = "{estimate}{stars}",
+             statistic = NULL)
+```
+
+El modelo 1 (M1) es prácticamente idéntico al modelo que estimamos maximizando directamente la verosimilitud (excepto por la elección de la linea base). En el modelo 2 (M2) permitimos que la elasticidad de precio depende de cada alternativa y acá encontramos por ejemplo que los consumidores son más sensibles al precio de la marca propia. Por último, en el modelo 3 (M3) permitimos que las utilidades ademas dependan de la intensidad del consumo. Acá aprendemos que los clientes que consumen más, derivan mayor utilidad por la marca propia (y en menor magnitud Heinz).
+
+## Preguntas
+
+### Pregunta 1
+
+Ajuste la función de verosimilitud de modo que el intercepto de *delmonte* quede en cero, tal como lo define *mlogit*. Estime el modelo y comparelo con respecto a los obtenidos con *mlogit*.
+
+```{r}
+# modelo logit con delmonte con linea base
+```
+
+### Pregunta 2
+
+En los ejemplos anteriores usamos una variable continua *npur* para describir la intensidad de compra. Defina una variable discreta *heavypur* que tome el valor 1 si el panelista tienen más compras que el promedio del panel en el horizonte considerado (0 en caso contrario)
+
+```{r}
+# Definir variable heavypur
+```
+
+### Pregunta 3
+
+Repita la estimación de los modelos anteriores, pero usando la variable *heavypur* para describir la intensidad de compra. Comente sus resultados.
+
+```{r, eval=FALSE}
+ketchuplogit.v1b <- 'a completer'
+ketchuplogit.v2b <- 'a completer'
+ketchuplogit.v3b <- 'a completer'
+
+modelsummary(list('M1'=ketchuplogit.v1b, 'M2'=ketchuplogit.v2b, 'M3'=ketchuplogit.v3b),
+             estimate  = "{estimate}{stars}",
+             statistic = NULL)
+```
+
+Comente las diferencias entre maxima verosimilitud y minimos cuadrados ordinarios
