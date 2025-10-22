@@ -1,0 +1,164 @@
+---
+title: "Regresión lineal desde Excel (diagnósticos mejorados)"
+output: html_document
+---
+
+Breve análisis: leeré el archivo Excel ubicado en el Escritorio llamado `base.xlsx`, hoja `Hoja 1`, tomaré las primeras 3 columnas (1 = y, 2 = x1, 3 = x2) y ajustaré un modelo lineal y ~ x1 + x2. Este documento añade comprobaciones explícitas para dar mensajes de error claros.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 7, fig.height = 5)
+```
+
+```{r regression, echo=TRUE}
+# Paquetes necesarios
+needed <- c("readxl", "dplyr", "broom", "car", "lmtest", "ggplot2", "readr")
+for (p in needed) if (!requireNamespace(p, quietly = TRUE)) install.packages(p)
+library(readxl); library(dplyr); library(broom); library(car); library(lmtest); library(ggplot2); library(readr)
+
+# Parámetros (ajusta si tu archivo está en otra ruta o tiene otro nombre/hoja)
+path <- path.expand("~/Desktop/base.xlsx")
+sheet <- "Hoja 1"
+
+```
+
+
+```{r}
+# 1) Comprobaciones iniciales ------------------------------------------------
+if (!file.exists(path)) stop(sprintf("No se encontró el archivo: %s\nPor favor coloca 'base.xlsx' en tu Escritorio o ajusta la ruta.", path))
+
+sheets <- readxl::excel_sheets(path)
+
+# Si el nombre exacto no existe, intentar emparejamientos tolerantes
+if (!(sheet %in% sheets)) {
+  norm <- function(x) gsub("\\s+", "", tolower(x))
+  # 1) coincidencia ignorando espacios y mayúsculas
+  idx_norm <- which(norm(sheets) == norm(sheet))
+  if (length(idx_norm) == 1) {
+    old_sheet <- sheet
+    sheet <- sheets[idx_norm]
+    warning(sprintf("Hoja '%s' no encontrada; usando hoja '%s' (ignorando espacios/case).", old_sheet, sheet))
+  } else {
+    # 2) coincidencia aproximada mediante agrep
+    approx_matches <- agrep(sheet, sheets, ignore.case = TRUE, value = TRUE, max.distance = 0.2)
+    if (length(approx_matches) == 1) {
+      old_sheet <- sheet
+      sheet <- approx_matches[1]
+      warning(sprintf("Hoja '%s' no encontrada; usando hoja aproximada '%s'.", old_sheet, sheet))
+    } else {
+      stop(sprintf("La hoja '%s' no existe en el archivo. Hojas disponibles: %s", sheet, paste(sheets, collapse = ", ")))
+    }
+  }
+}
+
+# Leer la hoja seleccionada en 'df'
+df <- tryCatch(readxl::read_excel(path, sheet = sheet), error = function(e) stop("Error leyendo la hoja seleccionada: ", e$message))
+
+# --- Opcional: limitar a una fila específica del Excel ---------------------
+# Usuario pidió: usar hasta la fila 456, contando la fila 1 como el nombre de variables (encabezado).
+# Por tanto, vamos a tomar las primeras (456 - 1) filas de datos leídas por readxl.
+# Cambia 'use_row_limit' a FALSE para desactivar esta limitación.
+use_row_limit <- TRUE
+row_limit_excel <- 1097L
+if (isTRUE(use_row_limit)) {
+  # número de filas de datos a mantener (restamos 1 por el encabezado)
+  rows_to_keep <- max(0, row_limit_excel - 1)
+  if (nrow(df) > rows_to_keep) {
+    df <- df %>% dplyr::slice(1:rows_to_keep)
+    warning(sprintf("Se ha limitado el dataset a las primeras %d filas de datos (Excel filas 2:%d).", rows_to_keep, row_limit_excel))
+  } else {
+    message(sprintf("El dataset tiene %d filas; la limitación solicitada (%d) no recorta nada.", nrow(df), rows_to_keep))
+  }
+}
+
+cat(sprintf("Leyendo hoja: '%s' (archivo: %s)\n", sheet, path))
+````
+
+
+```{r}
+
+# 3) Seleccionar primeras 3 columnas y convertir a numéricas ------------------
+raw <- df %>% select(1:3)
+colnames(raw) <- c("y", "x1", "x2")
+
+# Intentar convertir a numérico de forma segura: si vienen como caracteres con comas, usamos parse_number
+convert_safe <- function(x) {
+  if (is.numeric(x)) return(x)
+  # Si es factor o character, intentar parsear números (acepta comas y símbolos)
+  return(readr::parse_number(x))
+}
+
+data <- raw %>% mutate(across(everything(), convert_safe))
+
+# Informar si la conversión produjo NAs
+nas_before <- sum(is.na(raw))
+nas_after <- sum(is.na(data))
+cat(sprintf("NAs antes: %d   NAs después de intentar convertir: %d\n", nas_before, nas_after))
+
+# Filas y NAs
+orig_n <- nrow(data)
+data <- na.omit(data)
+na_removed <- orig_n - nrow(data)
+cat(sprintf("Filas originales: %d  - Tras eliminar NAs: %d  (eliminadas: %d)\n", orig_n, nrow(data), na_removed))
+
+if (nrow(data) < 5) stop("Tras limpiar NAs quedan menos de 5 observaciones; no es suficiente para ajustar un modelo robusto.")
+```
+
+```{r}
+# 4) Ajuste del modelo y manejo de errores ----------------------------------
+lm_model <- tryCatch(lm(y ~ x1+x2 , data = data), error = function(e) stop("Error ajustando lm(): ", e$message))
+
+cat("\n--- Resumen del modelo ---\n")
+print(summary(lm_model))
+
+cat("\n--- Tabla de coeficientes ---\n")
+print(broom::tidy(lm_model))
+
+cat("\n--- Medidas generales (R2, AIC, BIC, etc.) ---\n")
+print(broom::glance(lm_model))
+
+cat("\n--- Intervalos de confianza (95%) ---\n")
+print(confint(lm_model))
+
+cat("\n--- VIF (colinealidad) ---\n")
+print(car::vif(lm_model))
+
+cat("\n--- Prueba Durbin-Watson (autocorrelación) ---\n")
+print(lmtest::dwtest(lm_model))
+
+# Coeficientes estandarizados
+std_mod <- lm(scale(y) ~ scale(x1) + scale(x2), data = data)
+cat("\n--- Coeficientes estandarizados (beta) ---\n")
+print(coef(std_mod))
+
+# 5) Gráficos diagnósticos --------------------------------------------------
+par(mfrow = c(2, 2))
+plot(lm_model)
+par(mfrow = c(1, 1))
+
+resid_df <- broom::augment(lm_model)
+print(
+  ggplot(resid_df, aes(.fitted, .resid)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "loess", se = FALSE, color = "blue") +
+    labs(x = "Valores ajustados", y = "Residuales", title = "Residuales vs Ajustados") +
+    theme_minimal()
+)
+
+# Fin del chunk
+```
+
+```{r final_summary, echo=FALSE}
+# === Resumen final compacto de la regresión ===
+cat("\n##### Resumen numérico del modelo (summary) #####\n")
+print(summary(lm_model))
+
+cat("\n##### Tabla de coeficientes (ordenada y redondeada) #####\n")
+coef_tbl <- broom::tidy(lm_model) %>%
+  dplyr::mutate_if(is.numeric, ~round(., 4))
+knitr::kable(coef_tbl, caption = "Coeficientes del modelo")
+
+cat("\n##### Medidas globales del modelo #####\n")
+glance_tbl <- broom::glance(lm_model) %>% dplyr::mutate_if(is.numeric, ~round(., 4))
+print(glance_tbl)
+
+```
