@@ -31,6 +31,9 @@ Para el análisis, se dispone de un panel de 1956 hogares que realizan compras e
 <center>
 
 ```{r, out.width=100, echo=FALSE}
+
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/lab4") 
+
 include_graphics(c('heinz.jpg', 'hunts.jpg', 'delmonte.jpg', 'storebrand.jpg'))
 ```
 
@@ -45,6 +48,37 @@ include_graphics(c('heinz.jpg', 'hunts.jpg', 'delmonte.jpg', 'storebrand.jpg'))
 #Se cargan los datos y con visualizan las primeras filas
 ketchup <- read.csv("ketchup.csv", header=TRUE)
 head(ketchup)
+```
+
+```{r Preguntas}
+
+# --- CARGA DE DATOS ---
+datos_ketchup <- read.csv("ketchup.csv", header = TRUE)
+
+# --- CÁLCULO DE INTENSIDAD DE COMPRA ---
+# Número de compras por hogar
+intensidad <- datos_ketchup %>%
+  group_by(Ketchup.hid) %>%
+  summarise(npur = n())
+
+# Merge con los datos originales
+datos_ketchup <- merge(datos_ketchup, intensidad, by = "Ketchup.hid", all.x = TRUE)
+
+# --- FORMATEO PARA MLOGIT ---
+levels(datos_ketchup$Ketchup.choice) <- c("heinz", "hunts", "delmonte", "stb")
+
+ketchuptmp <- data.frame(
+  ch = datos_ketchup$Ketchup.choice,
+  price.heinz = datos_ketchup$price.heinz,
+  price.hunts = datos_ketchup$price.hunts,
+  price.delmonte = datos_ketchup$price.delmonte,
+  price.stb = datos_ketchup$price.stb,
+  npur = datos_ketchup$npur
+)
+
+ketchup.ml <- mlogit.data(ketchuptmp, shape = "wide", varying = 2:5, choice = "ch")
+
+
 ```
 
 El set de datos contiene las siguientes variables:
@@ -127,9 +161,9 @@ $$ v_{ij} =  \alpha_j + \beta x_{ij} + \nu t_j + \gamma_j z_i + \delta_j w_{ij}$
 
 Por ejemplo:
 
-```{r eval=FALSE}
-logit.v1 <- mlogit(choice ~ precio )
-logit.v2 <- mlogit(choice ~ 1 | precio )
+#```{r eval=FALSE}
+#logit.v1 <- mlogit(choice ~ precio)
+#logit.v2 <- mlogit(choice ~ 1 | precio)
 ```
 
 -   En logit.v1, tendremos un coeficiente de precio (más los interceptos por marca)
@@ -185,6 +219,42 @@ Ajuste la función de verosimilitud de modo que el intercepto de *delmonte* qued
 
 ```{r}
 # modelo logit con delmonte con linea base
+log_verosimilitud_q1 <- function(param) {
+  util_heinz <- exp(param[1] + param[4] * ketchuptmp$price.heinz)
+  util_hunts <- exp(param[2] + param[4] * ketchuptmp$price.hunts)
+  util_delmonte <- exp(param[4] * ketchuptmp$price.delmonte)  # base (sin intercepto)
+  util_stb <- exp(param[3] + param[4] * ketchuptmp$price.stb)
+
+  denom <- util_heinz + util_hunts + util_delmonte + util_stb
+
+  probs <- (util_heinz * (ketchuptmp$ch == "heinz") +
+            util_hunts * (ketchuptmp$ch == "hunts") +
+            util_delmonte * (ketchuptmp$ch == "delmonte") +
+            util_stb * (ketchuptmp$ch == "stb")) / denom
+
+  -sum(log(pmax(probs, 1e-10)))  # evita log(0)
+}
+
+#ESTIMACIÓN MLE
+param_iniciales <- rep(0.01, 4)
+resultado_q1 <- optim(param_iniciales, fn = log_verosimilitud_q1, method = "BFGS", hessian = TRUE)
+
+betas_q1 <- resultado_q1$par
+se_q1 <- sqrt(diag(solve(resultado_q1$hessian)))
+
+tabla_q1 <- data.frame(
+  Parámetro = c("Intercepto Heinz", "Intercepto Hunts", "Intercepto Store Brand", "Coef. Precio"),
+  Estimación = round(betas_q1, 3),
+  Error.Std = round(se_q1, 3)
+)
+
+kbl(tabla_q1, caption = "Pregunta 1: Logit nativo (Del Monte base)") %>%
+  kable_classic(full_width = F)
+
+# --- COMPARACIÓN CON MLOGIT ---
+mlogit_q1 <- mlogit(ch ~ price, data = ketchup.ml)
+summary(mlogit_q1)
+
 ```
 
 ### Pregunta 2
@@ -193,6 +263,15 @@ En los ejemplos anteriores usamos una variable continua *npur* para describir la
 
 ```{r}
 # Definir variable heavypur
+promedio_npurchases <- mean(datos_ketchup$npur)
+datos_ketchup <- datos_ketchup %>%
+  mutate(heavypur = as.numeric(npur > promedio_npurchases))
+
+
+# Ver distribución de heavypur
+table(datos_ketchup$heavypur)
+cat("Promedio de compras:", round(promedio_npurchases, 2))
+
 ```
 
 ### Pregunta 3
@@ -200,13 +279,39 @@ En los ejemplos anteriores usamos una variable continua *npur* para describir la
 Repita la estimación de los modelos anteriores, pero usando la variable *heavypur* para describir la intensidad de compra. Comente sus resultados.
 
 ```{r, eval=FALSE}
-ketchuplogit.v1b <- 'a completer'
-ketchuplogit.v2b <- 'a completer'
-ketchuplogit.v3b <- 'a completer'
 
-modelsummary(list('M1'=ketchuplogit.v1b, 'M2'=ketchuplogit.v2b, 'M3'=ketchuplogit.v3b),
-             estimate  = "{estimate}{stars}",
-             statistic = NULL)
+# Nueva data formateada con heavypur
+ketchuptmp2 <- data.frame(
+  ch = datos_ketchup$Ketchup.choice,
+  price.heinz = datos_ketchup$price.heinz,
+  price.hunts = datos_ketchup$price.hunts,
+  price.delmonte = datos_ketchup$price.delmonte,
+  price.stb = datos_ketchup$price.stb,
+  heavypur = datos_ketchup$heavypur
+)
+
+ketchup.ml2 <- mlogit.data(ketchuptmp2, shape = "wide", varying = 2:5, choice = "ch")
+
+# Estimación de modelos con heavypur
+modelo_M1 <- mlogit(ch ~ price, data = ketchup.ml2)
+modelo_M2 <- mlogit(ch ~ 1 | price, data = ketchup.ml2)
+modelo_M3 <- mlogit(ch ~ 1 | heavypur + price, data = ketchup.ml2)
+
+# Reporte de resultados
+modelsummary(
+  list("M1: Solo Precio" = modelo_M1,
+       "M2: Precio (var. indiv.)" = modelo_M2,
+       "M3: Precio + Heavypur" = modelo_M3),
+  estimate = "{estimate}{stars}",
+  statistic = NULL,
+  title = "Pregunta 3: Modelos Logit con heavypur"
+)
 ```
 
-Comente las diferencias entre maxima verosimilitud y minimos cuadrados ordinarios
+Comente las diferencias entre maxima verosimilitud y minimos cuadrados ordinarios:
+
+En el modelo M1, que considera únicamente el precio como variable explicativa común, se observa que el coeficiente del precio es negativo y estadísticamente significativo, lo que confirma la relación teórica esperada: a medida que aumenta el precio de una marca, disminuye la probabilidad de que el consumidor la elija. Esto indica que las decisiones de compra en el mercado de ketchup están fuertemente influenciadas por el precio, evidenciando una sensibilidad generalizada de los consumidores frente a las diferencias de valor entre las alternativas disponibles.
+
+Al incorporar heterogeneidad individual en el modelo M2, permitiendo que el parámetro del precio varíe entre consumidores, el ajuste del modelo mejora, reflejando que no todos los individuos presentan la misma sensibilidad al precio. Algunos hogares son más propensos a cambiar de marca ante aumentos de precio, mientras que otros mantienen su preferencia, probablemente por lealtad o hábito. Esta variabilidad en la respuesta al precio sugiere la existencia de distintos segmentos de consumidores dentro del mercado, lo que aporta mayor realismo a la modelación del comportamiento de elección.
+
+Finalmente, en el modelo M3, que introduce la variable dicotómica heavypur, se encuentra que su coeficiente es positivo y significativo, indicando que los compradores más intensivos (aquellos que adquieren ketchup con mayor frecuencia) tienen una mayor probabilidad de elegir determinadas marcas frente a los consumidores menos frecuentes. Este resultado sugiere que los heavy purchasers tienden a desarrollar una preferencia más estable hacia ciertas marcas, probablemente debido a su mayor familiaridad o experiencia con el producto. En conjunto, los tres modelos muestran que tanto el precio como la frecuencia de compra son factores clave para entender las decisiones de los consumidores en este mercado.
