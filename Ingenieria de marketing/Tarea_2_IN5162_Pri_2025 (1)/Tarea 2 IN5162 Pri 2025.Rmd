@@ -1,0 +1,216 @@
+---
+title:  "Tarea 2 - IN5162, Semestre Primavera 2025"
+author: Nombre 1, Nombre 2, Nombre 3.
+date:   "`r format(Sys.time(), '%d %B, %Y')`"
+
+output:
+    html_document:
+      df_print: paged
+      theme: simplex
+      highlight: tango
+      toc: no
+encoding: UTF-8
+---
+
+```{=html}
+<style> @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap'); body { font-family: 'Source Serif Pro', serif; text-align: justify; } caption { text-align: center; font-style: italic; margin-top: 8px; margin-bottom: 10px; color: #333333; } table th, table td { text-align: center; } .info-bloque { text-align: right; line-height: 1.5; margin-bottom: 20px; } </style>
+```
+
+```{=html}
+<!-- 
+Author        : Marcel Goic
+Description : Conjoint analysis
+                        - v.2.0 (16/10/2025). Second Version
+Notes       : 
+-->
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+remotes::install_github("mauricio1986/gmnl")
+library(tidyverse)
+library(kableExtra)
+library(tidyverse)
+library(gmnl)
+library(readxl)
+library(DataExplorer)
+library(tibble)
+```
+
+::: info-bloque
+<b>Curso: </b>Ingeniería de Marketing<br> <b>Profesor: </b>Marcel Goic<br> <b>Auxiliar: </b>J. Pinochet<br> <b>Ayudantes: </b>F. Vega, M. Palma, P. Curiqueo
+:::
+
+#  {.tabset}
+
+## Enunciado
+
+Una firma está evaluando la estrategia de precios para una de sus marcas. Sin embargo, sus ejecutivos quieren tener alguna noción de los efectos que una modificación del precio actual podría traer a la compañía. Para esto, la firma encargó el estudio de elección de marca que describe la probabilidad de que los clientes elijan las distintas alternativas disponibles de acuerdo con los precios y configuraciones de los productos^1^.
+
+El estudio, detallado en el archivo *conjoint.xlsx,* comprende 400 individuos, a cada uno de los cuales se le presentan 8 tuplas de 3 productos, los cuales difieren no solo en la marca y en los niveles de precios, sino también en otras características como una apariencia o la calidad de los materiales. Para cada conjunto de elección, los participantes podían elegir entre las 3 marcas de la categoría y la opción de no compra. Además, se tiene información del precio de los productos y características demográficas de los entrevistados, tales como edad y género. La Tabla 1 muestra el detalle de las variables registradas en el estudio.
+
+```{r variables, echo=FALSE, message=FALSE, warning=FALSE}
+datos_tabla <- tribble(
+  ~No., ~Nombre,    ~Descripción,
+  1,    "ID",       "Identificador del Panelista",
+  2,    "BRAND",    "De 1 a 3 indica la marca y 4 para la opción de no compra",
+  3,    "CHOICE",   "1 si la opción fue elegida, 0 si no",
+  4,    "FASH",     "1 si el producto tiene look *fashion*, 0 si no",
+  5,    "QUAL",     "1 si el producto es de calidad alta, 0 si no",
+  6,    "PRICE",    "Precio de la opción",
+  7,    "PRICESQ",  "Precio al cuadrado",
+  8,    "ASC4",     "Variable dummy para la 4ta opción",
+  9,    "MALE",     "1 para hombre, 0 para mujer",
+  10,   "AGE25",    "1 si tiene menos de 25 años",
+  11,   "AGE39",    "1 si tiene entre 25 y 39 años",
+  12,   "AGE40",    "1 si tiene más de 40 años"
+)
+
+knitr::kable(
+  datos_tabla,
+  caption = "Tabla 1: Descripción de variables"
+)
+```
+
+La empresa no está segura sobre qué aspectos influyen en la decisión de compra de sus clientes ni la magnitud de cada uno de los efectos. Para ello, se ha propuesto implementar una serie de modelos alternativos de comportamiento que permitan entender mejor el comportamiento de compra y apoyar así la política de precios.
+
+------------------------------------------------------------------------
+
+^1^: Técnicamente, el estudio contratado corresponde a una técnica conocida como análisis conjunto. Para una breve descripción de la técnica, ver <http://sawtoothsoftware.com/download/techpap/undca15.pdf>
+
+#### Reglas del juego
+
+-   Las tareas buscan replicar parcialmente las labores a las que se enfrentarían en el análisis de datos para el apoyo en la toma de decisiones, ya sea para una organización o para la definición de políticas. Por esto, se han propuesto preguntas relativamente abiertas que requieren que ustedes discutan y decidan cuál es el mejor enfoque de solución. Les pedimos que se involucren tempranamente en el desarrollo de la tarea para tener una discusión enriquecedora.
+
+-   Todas las dudas, comentarios y errores publicarlos **exclusivamente** en el foro de u-cursos. De esta forma todos se benefician de las respuestas ofrecidas.
+
+-   Consideramos que es muy importante que logren escribir un informe conciso con una redacción acorde de un informe técnico profesional. La presentación y comunicación de resultados es parte integral de la tarea y, por tanto, será evaluada cuidadosamente.
+
+-   La tarea se desarrolla en grupos de máximo 3 integrantes. Para entregar sus resultados suba, vía u-cursos, un único archivo comprimido llamado t2-A1-A2-A3.zip, donde A1, A2 y A3 es el primer apellido de los integrantes del grupo. Incluya también los nombres de los integrantes en el documento mismo. Incluya en el zip tanto el archivo .html de salida del markdown como los códigos fuentes que permitan reproducir sus resultados.
+
+-   La fecha de entrega de la tarea es el jueves 13 de noviembre a las 23:59 horas. Si se planifica con tiempo y entrega antes de ese día, tendrá una bonificación de tres décimas. Si entrega entre el plazo de entrega y el viernes 14 de noviembre a las 10:00 horas, tendrá un descuento de dos décimas. Después de esa fecha, no habrá plazo extra para la entrega. Algunos de los modelos de machine learning o probit pueden demorar en correr y por tanto la ejecución del código final puede tardar varios minutos. Si por algún motivo de *fuerza mayor* se ve imposibilitado de entregar la tarea en el plazo estipulado, deberá escribir directamente al profesor explicando su situación. El profesor decidirá el curso de acción de acuerdo a los méritos del caso. Como siempre, es mejor dar cuenta de cualquier problema con la mayor anticipación posible.
+
+-   Recuerde que tenemos dos instancias de cátedras asociadas a la tarea:
+
+    1.  La sesión, a realizarse el día [viernes 7 de noviembre]{style="color: navy"}, es de carácter **opcional** y está destinada a que compartan sus avances y podamos identificar de manera conjunta cuáles podrían ser dificultades técnicas que requieran orientación adicional.
+
+    2.  La sesión, a realizarse el día [viernes 14 de noviembre]{style="color: navy"}, es de carácter **obligatoria** y está destinada para que expongan los resultados más relevantes de su trabajo y resuman sus principales aprendizajes, como si estuviesen presentando su trabajo a una organización interesada en los resultados. Todos los estudiantes deben estar preparados para presentar, pero si hay grupos voluntarios, se les dará preferencia.
+
+-   En esta tarea vamos a implementar un mecanismo para declarar la participación de cada estudiante en el desarrollo de la tareas, así como de herramientas de inteligencia artificial. Para ello, deben completar la tabla de roles incluida al final.
+
+-   El equipo docente considera que la copia de tareas atenta en contra de tu aprendizaje y por tanto aplicará todas las medidas que estén a su disposición para desincentivar esta mala práctica.
+
+## Preliminares
+
+Escriba acá todos los comandos que necesita ejecutar antes de abordar las preguntas de la tarea (carga de librerías, lectura de datos, limpieza de la data, transformación de variables y todo lo que necesite).
+
+```{r}
+#Preliminares
+```
+
+## Desarrollo
+
+#### Pregunta 1
+
+(0.5 puntos) Explore los datos para entender la participación de mercado de cada marca, así como la relación entre precios y ventas. Explore si hay algún otro factor relevante que podría inferirse de los datos más allá de los precios. *Hint: Podría ser de utilidad la función create_report() de DataReport.*
+
+```{r P1}
+#Exploración de datos
+```
+
+#### Pregunta 2
+
+A continuación se plantean una serie de modelos alternativos para describir el comportamiento de compra. En cada uno de ellos se pide, para esta pregunta en particular, que reporte los estimadores máximo-verosímiles con sus correspondientes errores estándares y una breve discusión respecto a la interpretación y significancia estadística de cada una de ellas. Finalmente se pide estadísticos **AIC**, **BIC** y $\rho^2$ para evaluar cada modelo.
+
+a.  (1.0 punto) Estime un modelo logit que considere que la componente determinística de la utilidad que el cliente $i$ deriva por sobre la alternativa $k$ en la elección $t$ viene dada por:
+
+    $$
+    v_{itk} = \alpha_k + \beta_1 \cdot PRICE_{tk} + \beta_2 \cdot QUAL_{tk} + \beta_3 \cdot FASH_{tk}
+    $$
+
+    Estime con *logit* otros 2 modelos. El primero debe incluir, además, la lealtad a la marca y el segundo debe incluir, además, precios de referencia. Compare y elija el modelo que describa de mejor forma los datos.
+
+```{r P2a}
+#Logit
+```
+
+b.  (0.5 puntos) Estime los tres modelos anteriores con *probit* y compare sus resultados con respecto a los modelos anteriores. Elija el mejor modelo.
+
+```{r P2b}
+#Probit
+```
+
+c.  (1.0 punto) Otra opción es considerar que los clientes deciden primero si comprar o no y luego, en el caso de comprar, eligen una de las 3 marcas. Haga un modelo logit anidado usando el modelo que incluya la utilidad, más la lealtad y los precios de referencia. Compare sus resultados con los dos mejores modelos anteriores.
+
+```{r P2c}
+#Logit anidado
+```
+
+#### Pregunta 3
+
+Para esta pregunta, debe escoger uno de los modelos estimados en la pregunta anterior que considere que ajusta bien a los datos.
+
+(1.0 punto) Para aumentar la capacidad descriptiva del modelo, considere que pueden existir distintos segmentos entre los consumidores del producto. Re-estime el modelo considerando heterogeneidad no observable con clases latentes, determine cuántos segmentos debe incluir en el modelo y justifique su elección. Además, caracterice cada uno de los segmentos resultantes. *Indicación: Instale al inicio del archivo la librería gmnl mediante remotes::install_github("mauricio1986/gmnl")*
+
+```{r P3}
+#Heterogeneidad no observable
+```
+
+#### Pregunta 4
+
+(1.0 punto) Escoja un clasificador de aprendizaje de máquinas visto en clases. Calíbrelo con dos conjuntos de datos de entrenamiento distintos. Deben elegir las variables de acuerdo a las que consideren más significativas. El código debe ir documentado y deben reportar la capacidad de pronóstico y analizarlo utilizando la función confusionMatrix() de la librería Caret. *Hint: Le puede ser útil la siguiente guía [Choosing the right estimator](https://scikit-learn.org/stable/machine_learning_map.html)*.
+
+```{r P4}
+#Machine learning
+```
+
+## Resumen
+
+(1.0 punto) A partir de los modelos realizados previamente, discuta sus resultados y descubrimientos más relevantes. ¿Qué concluye sobre las preferencias de los clientes?
+
+```{r P5}
+#Summary
+```
+
+## Anexos
+
+Documenta acá cualquier otro adicional que considere útil tener de referencia.
+
+Todos los participantes del grupo de trabajo declaran que su participación queda bien reflejada en la siguiente tabla.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+roles <- data.frame(
+  integrantes = c("Integrante 1", "Integrante 2", "Integrante 3"),
+  P1 = c("código", "interpretación", "código e interpretación"),
+  P2 = c("interpretación", "-", "código e interpretación"),
+  P3 = c("-", "-", "código e interpretación"),
+  P4 = c("interpretación", "interpretación", "código"),
+  Resumen = c("interpretación", "código", "-")
+)
+
+roles %>%
+  kbl(caption = "**Tabla N+1:** Roles de los Participantes en el trabajo") %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+```
+
+Asimismo, los participantes del grupo de trabajo declaran que el uso de herramientas de inteligencia artificial (IA) queda bien reflejada en la siguiente tabla.
+
+```{r, echo=FALSE}
+iarole <- data.frame(
+  preguntas = c("P1", "P2", "P3", "P4", "Resumen"), 
+  uso = c("escribir códigos para formatear los datos", 
+          "interpretar los resultados", 
+          "-", 
+          "-", 
+          "Encontrar errores en el código"), 
+  herramienta = c("Chat GPT-5", 
+                  "Ninguna", 
+                  "Chat GPT-5", 
+                  "Chat GPT-5", 
+                  "Chat GPT-5, DeepSeek")
+)
+
+iarole %>%
+  kbl(caption = "**Tabla N+2:** Rol de la IA en el trabajo") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
