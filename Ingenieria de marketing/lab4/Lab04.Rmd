@@ -278,7 +278,7 @@ cat("Promedio de compras:", round(promedio_npurchases, 2))
 
 Repita la estimación de los modelos anteriores, pero usando la variable *heavypur* para describir la intensidad de compra. Comente sus resultados.
 
-```{r, eval=FALSE}
+```{r}
 
 # Nueva data formateada con heavypur
 ketchuptmp2 <- data.frame(
@@ -296,9 +296,11 @@ ketchup.ml2 <- mlogit.data(ketchuptmp2, shape = "wide", varying = 2:5, choice = 
 modelo_M1 <- mlogit(ch ~ price, data = ketchup.ml2)
 modelo_M2 <- mlogit(ch ~ 1 | price, data = ketchup.ml2)
 modelo_M3 <- mlogit(ch ~ 1 | heavypur + price, data = ketchup.ml2)
+```
 
-# Reporte de resultados
-modelsummary(
+
+```{r pregunta3}
+tabla_resultados <- modelsummary(
   list("M1: Solo Precio" = modelo_M1,
        "M2: Precio (var. indiv.)" = modelo_M2,
        "M3: Precio + Heavypur" = modelo_M3),
@@ -306,12 +308,15 @@ modelsummary(
   statistic = NULL,
   title = "Pregunta 3: Modelos Logit con heavypur"
 )
+
+print(tabla_resultados)
 ```
+
 
 Comente las diferencias entre maxima verosimilitud y minimos cuadrados ordinarios:
 
-En el modelo M1, que considera únicamente el precio como variable explicativa común, se observa que el coeficiente del precio es negativo y estadísticamente significativo, lo que confirma la relación teórica esperada: a medida que aumenta el precio de una marca, disminuye la probabilidad de que el consumidor la elija. Esto indica que las decisiones de compra en el mercado de ketchup están fuertemente influenciadas por el precio, evidenciando una sensibilidad generalizada de los consumidores frente a las diferencias de valor entre las alternativas disponibles.
+En el modelo M1, que solo considera el precio, todos los coeficientes son significativos y con signos coherentes. El precio (–4.321) indica que un aumento reduce la probabilidad de elección, y Heinz y Hunts muestran una preferencia base mayor que Del Monte.
 
-Al incorporar heterogeneidad individual en el modelo M2, permitiendo que el parámetro del precio varíe entre consumidores, el ajuste del modelo mejora, reflejando que no todos los individuos presentan la misma sensibilidad al precio. Algunos hogares son más propensos a cambiar de marca ante aumentos de precio, mientras que otros mantienen su preferencia, probablemente por lealtad o hábito. Esta variabilidad en la respuesta al precio sugiere la existencia de distintos segmentos de consumidores dentro del mercado, lo que aporta mayor realismo a la modelación del comportamiento de elección.
+El modelo M2 permite que la sensibilidad al precio varíe entre marcas. Los coeficientes siguen siendo negativos y significativos, siendo el store brand el más sensible (–6.707), mientras que Heinz y Hunts presentan menor elasticidad-precio, reflejando diferencias de reputación.
 
-Finalmente, en el modelo M3, que introduce la variable dicotómica heavypur, se encuentra que su coeficiente es positivo y significativo, indicando que los compradores más intensivos (aquellos que adquieren ketchup con mayor frecuencia) tienen una mayor probabilidad de elegir determinadas marcas frente a los consumidores menos frecuentes. Este resultado sugiere que los heavy purchasers tienden a desarrollar una preferencia más estable hacia ciertas marcas, probablemente debido a su mayor familiaridad o experiencia con el producto. En conjunto, los tres modelos muestran que tanto el precio como la frecuencia de compra son factores clave para entender las decisiones de los consumidores en este mercado.
+El modelo M3 incorpora heavypur, mostrando que compradores frecuentes prefieren Heinz (0.394**) y Store Brand (0.485**). A diferencia de MCO, que minimiza errores al cuadrado, la máxima verosimilitud estima parámetros que hacen más probable observar las elecciones, ideal para variables discretas como en logit.
