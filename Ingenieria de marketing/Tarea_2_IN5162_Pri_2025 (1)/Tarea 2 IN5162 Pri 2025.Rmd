@@ -28,13 +28,15 @@ Notes       :
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 remotes::install_github("mauricio1986/gmnl")
-library(tidyverse)
 library(kableExtra)
-library(tidyverse)
 library(gmnl)
 library(readxl)
-library(DataExplorer)
 library(tibble)
+library(dplyr)       
+library(tidyr)        
+library(ggplot2)      
+library(janitor)      
+library(forcats)
 ```
 
 ::: info-bloque
@@ -116,6 +118,8 @@ Escriba acá todos los comandos que necesita ejecutar antes de abordar las pregu
 
 ```{r P1}
 #Exploración de datos
+
+
 ```
 
 #### Pregunta 2
@@ -132,6 +136,8 @@ a.  (1.0 punto) Estime un modelo logit que considere que la componente determin�
 
 ```{r P2a}
 #Logit
+
+
 ```
 
 b.  (0.5 puntos) Estime los tres modelos anteriores con *probit* y compare sus resultados con respecto a los modelos anteriores. Elija el mejor modelo.
