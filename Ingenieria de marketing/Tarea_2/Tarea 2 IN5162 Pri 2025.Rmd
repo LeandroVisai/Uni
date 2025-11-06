@@ -37,6 +37,12 @@ library(tidyr)
 library(ggplot2)      
 library(janitor)      
 library(forcats)
+
+library(purrr)     # Para accumulate()
+library(mlogit)    # Para mlogit.data() y mlogit() 
+library(stargazer) # Para las tablas de resultados
+
+
 ```
 
 ::: info-bloque
@@ -108,6 +114,12 @@ Escriba acá todos los comandos que necesita ejecutar antes de abordar las pregu
 
 ```{r}
 #Preliminares
+# --- 1. Cargar y Preparar Datos Base ---
+# 1. Establece tu directorio de trabajo en la carpeta de la Tarea 2
+setwd("/Users/leandrovenegas/Documents/GitHub/Uni/Ingenieria de marketing/Tarea_2")
+
+# 2. Ahora, lee el archivo (R lo encontrará en esa carpeta)
+data <- read_excel("conjoint.xlsx")
 ```
 
 ## Desarrollo
@@ -136,7 +148,132 @@ a.  (1.0 punto) Estime un modelo logit que considere que la componente determin�
 
 ```{r P2a}
 #Logit
+# Definir loyalty es persistencia a la elección. La lealtad a la marca se puede medir a través de la frecuencia de compra de un cliente en el tiempo.
+data <- data %>%
+  group_by(id) %>% # 'id' es minúscula en el CSV
+  mutate(SetID = rep(1:8, each = 4)) %>%
+  ungroup() %>%
+  mutate(ChoiceSetID = paste(id, SetID, sep = "_"))
 
+# Asegurar que "No Compra" (BRAND 4) tenga precio 0
+data$PRICE[data$BRAND == 4] <- 0
+```
+
+
+
+```{r}
+# --- 2. Crear Variable de Lealtad (Znit) ---
+# (Empezando en 0)
+lambda <- 0.8
+data <- data %>%
+  arrange(id, BRAND, SetID) %>%
+  group_by(id, BRAND) %>%
+  mutate(
+    Lag_Choice = lag(CHOICE, default = 0), # Y_ni,t-1
+    # ¡CORRECCIÓN! Aplicamos tail() en la misma línea
+    Znit = tail(accumulate(Lag_Choice, ~ (lambda * .x) + ((1-lambda) * .y), .init = 0), -1)
+  ) %>%
+  ungroup() %>%
+  select(-Lag_Choice) # Limpiamos
+
+data$Znit[data$BRAND == 4] <- 0
+
+# --- 3. Crear Precio de Referencia (P_Ref_Znit) ---
+# (Empezando en 0, como pediste)
+alpha <- 0.8
+data <- data %>%
+  arrange(id, BRAND, SetID) %>%
+  group_by(id, BRAND) %>%
+  mutate(
+    Lag_Price = lag(PRICE, default = 0), # P_ni,t-1 (iniciando en 0)
+    # ¡CORRECCIÓN! Aplicamos tail() en la misma línea
+    Ref_Price_Znit = tail(accumulate(Lag_Price, ~ (alpha * .x) + ((1-alpha) * .y), .init = 0), -1)
+  ) %>%
+  ungroup() %>%
+  select(-Lag_Price) # Limpiamos
+
+data$Ref_Price_Znit[data$BRAND == 4] <- 0
+
+# --- 4. Preparar Datos para mlogit (¡CON CORRECCIÓN!) ---
+
+# 4.1. PASO NUEVO: Limpiar y forzar tipos de datos
+# (Las columnas Znit y Ref_Price_Znit ahora existirán, así que esto funcionará)
+data_pre_mlogit <- data %>%
+  select(ChoiceSetID, id, BRAND, CHOICE, 
+         PRICE, QUAL, FASH, Znit, Ref_Price_Znit) %>%
+  mutate(
+    BRAND = as.factor(BRAND),       # Forzar BRAND a ser un factor (categoría)
+    CHOICE = as.logical(CHOICE)   # Forzar CHOICE a ser Lógico (TRUE/FALSE)
+  ) %>%
+  na.omit() # Eliminar cualquier fila con NAs
+
+# 4.2. Formatear Datos para mlogit
+data.mlogit <- mlogit.data(
+  data_pre_mlogit,
+  choice = "CHOICE",
+  shape = "long",
+  alt.var = "BRAND",
+  chid.var = "ChoiceSetID",
+  id.var = "id"
+)
+
+```
+
+
+
+```{r}
+
+
+# --- 5. Estimación de los 3 Modelos Logit (P2.a) ---
+
+# (Añadimos 'na.action = na.omit' por seguridad)
+
+# Modelo 1 (Base):
+m1_logit <- mlogit(CHOICE ~ PRICE + QUAL + FASH | 1, 
+                   data = data.mlogit, na.action = na.omit)
+
+# Modelo 2 (Base + Lealtad Znit):
+m2_logit <- mlogit(CHOICE ~ PRICE + QUAL + FASH + Znit | 1, 
+                   data = data.mlogit, na.action = na.omit)
+
+# Modelo 3 (Base + Lealtad Znit + P. Referencia Znit DIRECTO):
+m3_logit_directo <- mlogit(CHOICE ~ PRICE + QUAL + FASH + Znit + Ref_Price_Znit | 1, 
+                           data = data.mlogit, na.action = na.omit)
+
+# --- 6. Ver Resultados (P2.a) ---
+# (Esto ahora debería funcionar, ya que m1, m2 y m3 se crearán correctamente)
+stargazer(m1_logit, m2_logit, m3_logit_directo, type = "text",
+          title = "Resultados P2.a (P. Ref como variable directa, iniciando en 0)",
+          align = TRUE,
+          digits = 3,
+          report = "vcstp*")
+```
+
+```{r}
+
+# --- 5. Estimación de los 3 Modelos Logit (P2.a) ---
+
+# (Añadimos 'na.action = na.omit' por seguridad)
+
+# Modelo 1 (Base):
+m1_logit <- mlogit(CHOICE ~ PRICE + QUAL + FASH | 1, 
+                   data = data.mlogit, na.action = na.omit)
+
+# Modelo 2 (Base + Lealtad Znit):
+m2_logit <- mlogit(CHOICE ~ PRICE + QUAL + FASH + Znit | 1, 
+                   data = data.mlogit, na.action = na.omit)
+
+# Modelo 3 (Base + Lealtad Znit + P. Referencia Znit DIRECTO):
+m3_logit_directo <- mlogit(CHOICE ~ PRICE + QUAL + FASH + Znit + Ref_Price_Znit | 1, 
+                           data = data.mlogit, na.action = na.omit)
+
+# --- 6. Ver Resultados (P2.a) ---
+# (Esto ahora debería funcionar, ya que m1, m2 y m3 se crearán correctamente)
+stargazer(m1_logit, m2_logit, m3_logit_directo, type = "text",
+          title = "Resultados P2.a (P. Ref como variable directa, iniciando en 0)",
+          align = TRUE,
+          digits = 3,
+          report = "vcstp*")
 
 ```
 
@@ -144,6 +281,7 @@ b.  (0.5 puntos) Estime los tres modelos anteriores con *probit* y compare sus 
 
 ```{r P2b}
 #Probit
+
 ```
 
 c.  (1.0 punto) Otra opción es considerar que los clientes deciden primero si comprar o no y luego, en el caso de comprar, eligen una de las 3 marcas. Haga un modelo logit anidado usando el modelo que incluya la utilidad, más la lealtad y los precios de referencia. Compare sus resultados con los dos mejores modelos anteriores.
