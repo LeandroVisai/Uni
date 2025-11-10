@@ -121,11 +121,16 @@ Escriba acá todos los comandos que necesita ejecutar antes de abordar las pregu
 ```{r}
 #Preliminares
 # --- 1. Carga de Datos (UNA SOLA VEZ) ---
+rm(list=ls())         # Limpia la lista de objetos 
+graphics.off()        # Limpia la lista de gráficos
 # Usamos una ruta relativa. Esto funciona si "conjoint.xlsx" está 
 # en la misma carpeta que tu archivo .Rmd (idealmente, dentro de un Proyecto R).
-ruta_archivo <- "conjoint.xlsx" 
+ruta_archivo <- "Ingenieria de marketing/Tarea_2/conjoint.xlsx"
 conjoint_raw <- read_excel(ruta_archivo)
+```
 
+
+```{r Con base cargada}
 # --- 2. Limpieza Básica y Creación de Variables (UNA SOLA VEZ) ---
 conjoint_base <- conjoint_raw %>%
   janitor::clean_names() %>%
@@ -618,15 +623,15 @@ get_model_stats <- function(model, null_model, model_name) {
 # (Uso data.mlogita)
 
 # M1: Modelo base
-m1_logita <- mlogit(choice ~ price + qual + fash, 
+m1_logita <- mlogit(choice ~ price + qual + fash,
                     data = data.mlogita, na.action = na.omit)
 
 # M2: Modelo base + Lealtad (znit)
-m2_logita <- mlogit(choice ~ price + qual + fash + znit, 
+m2_logita <- mlogit(choice ~ price + qual + fash + znit,
                     data = data.mlogita, na.action = na.omit)
 
 # M3: Modelo base + Lealtad + P. Ref (ref_price_znit)
-m3_logit_directoa <- mlogit(choice ~ price + qual + fash + znit + ref_price_znit, 
+m3_logit_directoa <- mlogit(choice ~ price + qual + fash + znit + ref_price_znit,
                             data = data.mlogita, na.action = na.omit)
 
 # Reporte con Stargazer
