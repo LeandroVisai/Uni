@@ -120,18 +120,13 @@ Escriba acá todos los comandos que necesita ejecutar antes de abordar las pregu
 
 ```{r}
 #Preliminares
-# --- 1. Carga de Datos (UNA SOLA VEZ) ---
-rm(list=ls())         # Limpia la lista de objetos 
-graphics.off()        # Limpia la lista de gráficos
+# Carga de Datos
 # Usamos una ruta relativa. Esto funciona si "conjoint.xlsx" está 
 # en la misma carpeta que tu archivo .Rmd (idealmente, dentro de un Proyecto R).
-ruta_archivo <- "Ingenieria de marketing/Tarea_2/conjoint.xlsx"
+ruta_archivo <- "conjoint.xlsx" 
 conjoint_raw <- read_excel(ruta_archivo)
-```
 
-
-```{r Con base cargada}
-# --- 2. Limpieza Básica y Creación de Variables (UNA SOLA VEZ) ---
+# Limpieza y Creación de Variables
 conjoint_base <- conjoint_raw %>%
   janitor::clean_names() %>%
   mutate(
@@ -151,8 +146,8 @@ conjoint_base <- conjoint_raw %>%
     # Variables de elección
     no_compra = ifelse(brand == "4", 1L, 0L),
     
-    # --- Identificadores de Set de Elección ---
-    # Esto es crucial para mlogit y debe hacerse una sola vez.
+    # Identificadores de Set de Elección 
+    # Esto es crucial para mlogit
     .row_id = row_number()
   ) %>%
   arrange(id, .row_id) %>%
@@ -161,8 +156,8 @@ conjoint_base <- conjoint_raw %>%
   ungroup() %>%
   mutate(choice_set_id = paste(id, set_id, sep = "_"))
 
-# --- 3. Chequeos Básicos ---
-# (Es bueno tenerlos aquí para verificar la carga)
+# Chequeos Básicos
+
 n_individuos <- dplyr::n_distinct(conjoint_base$id)
 cat("Número de individuos únicos:", n_individuos, "\n")
 cat("Chequeo de NAs:\n")
@@ -178,8 +173,8 @@ print(table(conjoint_base$choice, useNA = "ifany"))
 (0.5 puntos) Explore los datos para entender la participación de mercado de cada marca, así como la relación entre precios y ventas. Explore si hay algún otro factor relevante que podría inferirse de los datos más allá de los precios. *Hint: Podría ser de utilidad la función create_report() de DataReport.*
 
 ```{r P1a}
-# --- INICIO P1 ---
-# Uso 'conjoint_base' que definí en "preliminares".
+
+# Usamos 'conjoint_base' que definimos en "preliminares".
 cat("### Distribución por Edad ###\n")
 conjoint_base %>%
   group_by(segmento_edad) %>%
@@ -202,7 +197,7 @@ conjoint_base %>%
   ) +
   theme_minimal() +
   theme(legend.position = "none")
-
+#el tramo etario más común es menores a 25 años
 cat("\n### Distribución por Sexo ###\n")
 # Distribución por género
 conjoint_base %>%
@@ -213,7 +208,7 @@ conjoint_base %>%
     porcentaje = round(100 * n_personas / sum(n_personas), 1)
   ) %>%
   print()
-
+#Hay más hombres que mujeres, en particular 229/400 son hombres
 # Gráfico de proporción por sexo
 conjoint_base %>%
   distinct(id, male) %>%
@@ -230,7 +225,7 @@ conjoint_base %>%
 ```
 
 ```{r Análisis de Mercado (Marca y Precio)}
-# --- 2. Análisis de Mercado (Marca y Precio) ---
+
 
 cat("\n### Share de Mercado por Marca ###\n")
 # distribucion por marca (Share)
@@ -258,7 +253,7 @@ conjoint_base %>%
   ) +
   theme_minimal() +
   theme(legend.position = "none")
-#La marca más común es la marca 3
+#La marca más común es la marca 3, es la que tiene mayor participación de mercado
 
 cat("\n### Distribución de Precios por Marca ###\n")
 # distribución precios
@@ -274,15 +269,19 @@ conjoint_base %>%
 
 # Gráfico de dispersión de precios por marca
 ggplot(conjoint_base, aes(x = factor(brand), y = price, color = factor(brand))) +
-  geom_point( alpha = 0.6, size = 2) +     # puntos
+  geom_boxplot(alpha = 0.7, outlier.color = "red", outlier.shape = 16, outlier.size = 2) +
   stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "black") +  # punto negro = promedio
   labs(
-    title = "Distribución de precios por marca (puntos individuales)",
+    title = "Distribución de precios por marca (boxplot)",
     x = "Marca",
     y = "Precio"
   ) +
   theme_minimal() +
-  theme(legend.position = "none")
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 13),
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  )
 #La marca 2 tiene precios más elevados
 
 ```
@@ -290,8 +289,8 @@ ggplot(conjoint_base, aes(x = factor(brand), y = price, color = factor(brand))) 
 
 
 ```{r Parte 3}
-# --- 3. Análisis de Factores Relevantes (Precio, Fash, Qual) ---
-# (Este chunk estaba bien, solo eliminé la creación duplicada de conjoint_marcas)
+# Análisis de Factores Relevantes 
+
 
 # Creo 'conjoint_marcas' aquí, donde se usa por primera vez.
 conjoint_marcas <- conjoint_base %>%
@@ -313,7 +312,7 @@ ggplot(ventas_precio, aes(x = price, y = ventas, color = factor(brand), group = 
     color = "Marca"
   ) +
   theme_minimal()
-#En todas se ve una tendencia que a mayor precio primero hay más ventas y luego decaen
+#En todas se ve una tendencia que a mayor precio primero hay más ventas y luego decaen. Esto es respondiendo explícitamente a la sección en que se pide ver la relación precio v/s ventas
 
 # Pregunta: ¿el look fashion (FASH) importa?
 cat("\n### Efecto 'Fashion' (sobre marcas 1-3) ###\n")
@@ -336,7 +335,7 @@ ggplot(fash_effect, aes(x = factor(fash), y = tasa_eleccion)) +
     title = "Efecto promedio de 'look fashion' sobre elección"
   ) +
   theme_minimal()
-#Se ven diferencias
+#Se ven diferencias entre look fashion y no
 
 # ¿la calidad alta importa?
 cat("\n### Efecto 'Calidad' (sobre marcas 1-3) ###\n")
@@ -359,12 +358,12 @@ ggplot(qual_effect, aes(x = factor(qual), y = tasa_eleccion)) +
     title = "Efecto promedio de 'calidad alta' sobre elección"
   ) +
   theme_minimal()
-#Se ven diferencias
+#Se ven diferencias entre calidad y no
 ```
 
 
 ```{r Parte 4}
-# --- 4. Cruce de Variables y Segmentación ---
+# Cruce de Variables y Segmentación 
 
 # Segmentación demográfica (Sexo vs Marca)
 # Uso conjoint_base (el original) para incluir la opción "no compra"
@@ -389,7 +388,21 @@ ggplot(demog_effect %>% filter(brand %in% c("1","2","3","4")),
     title = "Preferencias por marca / no comprar según género"
   ) +
   theme_minimal()
+#como no se ve de forma clara dado que hay más hombres quqe mujeres si hay una preferencia por una marca para algún género, se debe normalizar por la cantidad, 229 hombres y 171 mujeres, luego queda: 
 
+ratio_h_m <- conjoint_base %>%
+  filter(brand %in% c("1","2","3","4")) %>%
+  group_by(brand, male) %>%
+  summarise(elegidas = sum(choice == 1, na.rm = TRUE), .groups = "drop") %>%
+  mutate(sexo = if_else(male == 1, "Hombre", "Mujer")) %>%
+  select(-male) %>%
+  tidyr::pivot_wider(names_from = sexo, values_from = elegidas, values_fill = 0) %>%
+  mutate(ratio_h_m = ifelse(Mujer == 0, NA_real_, Hombre / Mujer)) %>%
+  arrange(brand)
+
+print(ratio_h_m)
+
+#Se puede ver que 22/171 es aproximadamente 1,33 luego como la marca 1 tiene 1,07 hombres por cada mujer, es claramente preferida por mujeres. Así mismo con no comprar que tiene1,47 hombres por cada mujer, claramente preferido por hombres. 
 # Segmentación demográfica (Edad vs Marca)
 edad_effect <- conjoint_base %>%
   group_by(segmento_edad, brand) %>%
@@ -410,34 +423,9 @@ ggplot(edad_effect %>% filter(brand %in% c("1","2","3","4")),
     title = "Preferencias por marca / no comprar según edad"
   ) +
   theme_minimal()
+#De este gráfico se puede ver por ejemolo que la marca 1 no es para nada preferida por los menores a 25 años pues pese a ser más en total, hay más de los otros segmentos etarios que prefieren marca 1.
 
-# relacion precio y ventas controlando por calidad:
-# (Uso conjoint_marcas que definí en el chunk anterior)
-price_quality <- conjoint_marcas %>%
-  group_by(brand, price, qual) %>%
-  summarise(
-    n_ofertas = n(),
-    n_elegida = sum(choice == 1),
-    tasa_eleccion = n_elegida / n_ofertas,
-    .groups = "drop"
-  )
 
-# Gráfico: precio vs tasa de elección, separado por calidad
-ggplot(price_quality, aes(x = price, y = tasa_eleccion,
-                          color = factor(qual), shape = factor(qual))) +
-  geom_point(alpha = 0.6, size = 2) +
-  geom_smooth(method = "loess", se = FALSE) +
-  facet_wrap(~brand) +
-  labs(
-    title = "Relación entre precio y probabilidad de elección\nsegún calidad del producto",
-    x = "Precio",
-    y = "Tasa de elección",
-    color = "Calidad (qual)",
-    shape = "Calidad (qual)"
-  ) +
-  scale_color_manual(values = c("0" = "#FF6666", "1" = "#0099CC"),
-                     labels = c("0" = "Baja", "1" = "Alta")) +
-  theme_minimal()
 ```
 
 ```{r Parte 5}
@@ -485,7 +473,7 @@ create_report(
   report_title = "Análisis Exploratorio del Estudio Conjoint"
 )
 ```
-
+En definitiva se puede ver que calidad y fashion son factores relevantes. Que hay más honbres que mujeres (229 v/s 171), que el tramo etario más común es el de menor a 25 años, que la marca con precios más altos es la marca 2 y la marca con mayor participación de mercado es la marca 3. 
 #### Pregunta 2
 
 A continuación se plantean una serie de modelos alternativos para describir el comportamiento de compra. En cada uno de ellos se pide, para esta pregunta en particular, que reporte los estimadores máximo-verosímiles con sus correspondientes errores estándares y una breve discusión respecto a la interpretación y significancia estadística de cada una de ellas. Finalmente se pide estadísticos **AIC**, **BIC** y $\rho^2$ para evaluar cada modelo.
@@ -501,8 +489,8 @@ a.  (1.0 punto) Estime un modelo logit que considere que la componente determin�
 ```{r P2a}
 # --- Preparación de Datos CENTRALIZADA para P2 ---
 
-lambda <- 0.25
-alpha  <- 0.25
+lambda <- 0.75
+alpha  <- 0.75
 
 # --- 1) Precio promedio (para P2a) ---
 avg_prices <- conjoint_base %>%
@@ -623,15 +611,15 @@ get_model_stats <- function(model, null_model, model_name) {
 # (Uso data.mlogita)
 
 # M1: Modelo base
-m1_logita <- mlogit(choice ~ price + qual + fash,
+m1_logita <- mlogit(choice ~ price + qual + fash, 
                     data = data.mlogita, na.action = na.omit)
 
 # M2: Modelo base + Lealtad (znit)
-m2_logita <- mlogit(choice ~ price + qual + fash + znit,
+m2_logita <- mlogit(choice ~ price + qual + fash + znit, 
                     data = data.mlogita, na.action = na.omit)
 
 # M3: Modelo base + Lealtad + P. Ref (ref_price_znit)
-m3_logit_directoa <- mlogit(choice ~ price + qual + fash + znit + ref_price_znit,
+m3_logit_directoa <- mlogit(choice ~ price + qual + fash + znit + ref_price_znit, 
                             data = data.mlogita, na.action = na.omit)
 
 # Reporte con Stargazer
@@ -794,106 +782,159 @@ Para esta pregunta, debe escoger uno de los modelos estimados en la pregunta ant
 (1.0 punto) Escoja un clasificador de aprendizaje de máquinas visto en clases. Calíbrelo con dos conjuntos de datos de entrenamiento distintos. Deben elegir las variables de acuerdo a las que consideren más significativas. El código debe ir documentado y deben reportar la capacidad de pronóstico y analizarlo utilizando la función confusionMatrix() de la librería Caret. *Hint: Le puede ser útil la siguiente guía [Choosing the right estimator](https://scikit-learn.org/stable/machine_learning_map.html)*.
 
 ```{r P4a}
-# --- P4: Preparación de Datos para Machine Learning ---
+#  Preparación de Datos 
 
-# 1) Preparar datos base para ML
-# (Aplico las transformaciones de 'conjoint_ml' directamente a 'conjoint_base')
-conjoint_ml <- conjoint_base %>%
+set.seed(123)
+
+# 1) Dataset limpio
+cb <- conjoint_base %>%
   mutate(
-    # La metodolgía de P4 convierte 'brand' en el target multiclase
-    brand  = factor(brand, levels = c(1,2,3,4), labels = c("M1","M2","M3","NoCompra")),
-    # Convierte predictores a factores
-    qual   = factor(qual),
-    fash   = factor(fash),
-    male   = factor(male)
-    
-    # 'price' es numérico (se queda igual)
-    # 'segmento_edad' ya es un factor (creado en preliminares)
+    brand = factor(as.character(brand), levels = c("1","2","3","4"),
+                   labels = c("M1","M2","M3","NoCompra")),
+    qual  = as.integer(qual),
+    fash  = as.integer(fash),
+    male  = factor(as.integer(male), levels = c(0,1), labels = c("Mujer","Hombre")),
+    segmento_edad = factor(as.character(segmento_edad),
+                           levels = c("u25","25_39","40plus","ns/otro"))
   )
 
-# 2) Matriz de predictores (X) y target (y)
-# (Esta es la metodología de P4 que no se debe cambiar)
+# 2) 1 fila por SET con features del SET esto lo tuve que hacer porque antes identificaba perfecto al caso no compra
+set_features <- cb %>%
+  group_by(choice_set_id, id, segmento_edad, male) %>%
+  summarise(
+    # Target del set
+    brand_chosen = brand[which.max(choice)],
 
-pred_formula <- ~ price + qual + fash + male + segmento_edad
-dv <- dummyVars(pred_formula, data = conjoint_ml)      
-X_all <- predict(dv, newdata = conjoint_ml) %>% as.data.frame()
-y_all <- conjoint_ml$brand # El target es 'brand' (multiclase)                       
+    # Agregados de precios (solo marcas 1-3)
+    set_price_mean = mean(price[brand != "NoCompra"], na.rm = TRUE),
+    set_price_sd   = sd(price[brand != "NoCompra"], na.rm = TRUE),
+    set_price_min  = min(price[brand != "NoCompra"], na.rm = TRUE),
+    set_price_max  = max(price[brand != "NoCompra"], na.rm = TRUE),
 
-cat("\nClases disponibles (total):\n"); print(table(y_all))
+    # Composición del set
+    set_n_qual1 = sum(qual[brand != "NoCompra"] == 1, na.rm = TRUE),
+    set_n_fash1 = sum(fash[brand != "NoCompra"] == 1, na.rm = TRUE),
 
-# Control de entrenamiento (CV 5-fold)
-ctrl <- trainControl(method = "cv", number = 5)
+    # Presencia de marcas en el set (no mira la elegida)
+    has_M1 = as.integer(any(brand == "M1")),
+    has_M2 = as.integer(any(brand == "M2")),
+    has_M3 = as.integer(any(brand == "M3")),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    set_price_sd = ifelse(is.na(set_price_sd), 0, set_price_sd)
+  )
+
+# 3) Dataset final
+df_set <- set_features %>%
+  transmute(
+    choice_set_id, id,
+    brand = factor(brand_chosen, levels = c("M1","M2","M3","NoCompra")),
+    set_price_mean, set_price_sd, set_price_min, set_price_max,
+    set_n_qual1, set_n_fash1, has_M1, has_M2, has_M3,
+    male, segmento_edad
+  )
+
+cat("\nClases (elegidas) en TODO el set:\n"); print(table(df_set$brand))
+
 ```
 
 
-```{r P4 Calibración}
-# --- P4: CALIBRACIÓN 1 (Split 80/20) ---
-# (Metodología P4 sin cambios)
+```{r P4 continuación}
+# Función: entrena, evalúa y reporta matrices, la hicimos así para que fuera más rpáido ver los 2 casos: 80/20 y 70/30
 
-set.seed(123)
-idx1 <- createDataPartition(y_all, p = 0.8, list = FALSE)
+eval_knn_split <- function(df_set, p_split = 0.8, k_grid = seq(3, 49, by = 2), seed = 123) {
+  set.seed(seed)
 
-X_tr1 <- X_all[idx1, , drop = FALSE]
-X_te1 <- X_all[-idx1, , drop = FALSE]
-y_tr1 <- y_all[idx1]
-y_te1 <- y_all[-idx1]
+  # Split estratificado por clase 
+  idx <- createDataPartition(df_set$brand, p = p_split, list = FALSE)
+  train_df <- df_set[idx, ]
+  test_df  <- df_set[-idx, ]
 
-cat("\nDistribución de clases (train 1):\n"); print(prop.table(table(y_tr1)))
-cat("\nDistribución de clases (test 1):\n");  print(prop.table(table(y_te1)))
+  cat("\n==== Split ", sprintf("%d/%d", round(p_split*100), round((1-p_split)*100)), " ====\n", sep = "")
+  cat("\nDistribución de clases (train):\n"); print(prop.table(table(train_df$brand)))
+  cat("\nDistribución de clases (test):\n");  print(prop.table(table(test_df$brand)))
 
-# Entrenamiento KNN (centrar/escalar + búsqueda de k)
-set.seed(123)
-knn1 <- train(
-  x = X_tr1, y = y_tr1,
-  method = "knn",
-  preProcess = c("center","scale"),
-  trControl = ctrl,
-  tuneLength = 15
-)
+  # Balanceo: trata NoCompra como marca más 
+  train_bal <- upSample(
+    x = subset(train_df, select = -c(choice_set_id, id, brand)),
+    y = train_df$brand,
+    yname = "brand"
+  )
+  cat("\nDistribución de clases (train balanceado):\n"); print(prop.table(table(train_bal$brand)))
 
-# Curva de validación (k vs Accuracy)
-print(knn1)
-plot(knn1)
+  # Dummies
+  dv   <- dummyVars(~ ., data = subset(train_bal, select = -brand), fullRank = TRUE)
+  X_tr <- predict(dv, newdata = subset(train_bal, select = -brand)) %>% as.data.frame()
+  y_tr <- train_bal$brand
 
-# Evaluación en test 1 (multiclase)
-pred1 <- predict(knn1, newdata = X_te1)
-conf1 <- confusionMatrix(pred1, y_te1)
-cat("\n=== Resultados Calibración 1 (80/20) ===\n")
-print(conf1)
+  X_te <- predict(dv, newdata = subset(test_df, select = -c(choice_set_id, id, brand))) %>% as.data.frame()
+  y_te <- factor(test_df$brand, levels = levels(y_tr))
+
+  # Entrenamiento kNN (multiclase)
+  ctrl <- trainControl(method = "cv", number = 10, savePredictions = "final")
+  set.seed(seed)
+  knn_fit <- train(
+    x = X_tr, y = y_tr,
+    method = "knn",
+    preProcess = c("center","scale"),
+    trControl = ctrl,
+    tuneGrid = data.frame(k = k_grid),
+    metric = "Accuracy"
+  )
+  print(knn_fit)
+
+  # Evaluación
+  pred   <- predict(knn_fit, newdata = X_te)
+  pred   <- factor(pred, levels = levels(y_tr))
+  y_true <- factor(y_te, levels = levels(y_tr))
+
+  CM <- confusionMatrix(pred, y_true, mode = "everything", dnn = c("Pred","Real"))
+
+  cat("\n==== MATRIZ (conteos; Pred x Real) ====\n")
+  print(CM$table)
+
+  # Versión tradicional: FILAS = Real, COLUMNAS = Pred
+  M_counts <- t(CM$table)
+
+  cat("\n==== MATRIZ (FILAS=Real, COLUMNAS=Pred) ====\n")
+  print(M_counts)
+
+  cat("\nAccuracy global:\n"); print(CM$overall["Accuracy"])
+
+  cat("\n=== Recall por clase (filas=Real) ===\n")
+  print(round(prop.table(M_counts, 1), 3))
+
+  cat("\n=== Precision por clase (columnas=Pred) ===\n")
+  print(round(prop.table(M_counts, 2), 3))
+
+  invisible(list(fit = knn_fit, CM = CM, M_counts = M_counts))
+}
 ```
 
 
-```{r calibración2}
-# --- P4: CALIBRACIÓN 2 (Split 70/30) ---
-# (Metodología P4 sin cambios)
+```{r calibración}
 
-set.seed(456)
-idx2 <- createDataPartition(y_all, p = 0.7, list = FALSE)
+# Calibración 1: 80/20
 
-X_tr2 <- X_all[idx2, , drop = FALSE]
-X_te2 <- X_all[-idx2, , drop = FALSE]
-y_tr2 <- y_all[idx2]
-y_te2 <- y_all[-idx2]
-
-cat("\nDistribución de clases (train 2):\n"); print(prop.table(table(y_tr2)))
-cat("\nDistribución de clases (test 2):\n");  print(prop.table(table(y_te2)))
-
-set.seed(456)
-knn2 <- train(
-  x = X_tr2, y = y_tr2,
-  method = "knn",
-  preProcess = c("center","scale"),
-  trControl = ctrl,
-  tuneLength = 15
+res_80_20 <- eval_knn_split(
+  df_set,
+  p_split = 0.80,
+  k_grid  = seq(3, 49, by = 2),
+  seed    = 123
 )
 
-print(knn2)
-plot(knn2)
 
-pred2 <- predict(knn2, newdata = X_te2)
-conf2 <- confusionMatrix(pred2, y_te2)
-cat("\n=== Resultados Calibración 2 (70/30) ===\n")
-print(conf2)
+# Calibración 2: 70/30
+
+res_70_30 <- eval_knn_split(
+  df_set,
+  p_split = 0.70,
+  k_grid  = seq(3, 49, by = 2),
+  seed    = 321
+)
+
+
 ```
 
 
@@ -902,7 +943,16 @@ print(conf2)
 (1.0 punto) A partir de los modelos realizados previamente, discuta sus resultados y descubrimientos más relevantes. ¿Qué concluye sobre las preferencias de los clientes?
 
 ```{r P5}
-#Summary
+#Summary 
+
+
+
+
+
+
+
+
+
 ```
 
 ## Anexos
