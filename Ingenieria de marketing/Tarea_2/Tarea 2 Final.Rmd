@@ -534,7 +534,7 @@ conjoint_p2_base <- conjoint_base %>%
 conjoint_p2_base$znit[conjoint_p2_base$brand == 4] <- 0
 conjoint_p2_base$ref_price_mean[conjoint_p2_base$brand == 4] <- 0
 conjoint_p2_base$ref_price_zero[conjoint_p2_base$brand == 4] <- 0
-````
+```
 
 
 
