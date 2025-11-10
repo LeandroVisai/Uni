@@ -1,0 +1,944 @@
+---
+title:  "Tarea 2 - IN5162, Semestre Primavera 2025"
+author: Nombre 1, Nombre 2, Nombre 3.
+date:   "`r format(Sys.time(), '%d %B, %Y')`"
+
+output:
+    html_document:
+      df_print: paged
+      theme: simplex
+      highlight: tango
+      toc: no
+encoding: UTF-8
+---
+
+```{=html}
+<style> @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap'); body { font-family: 'Source Serif Pro', serif; text-align: justify; } caption { text-align: center; font-style: italic; margin-top: 8px; margin-bottom: 10px; color: #333333; } table th, table td { text-align: center; } .info-bloque { text-align: right; line-height: 1.5; margin-bottom: 20px; } </style>
+```
+
+```{=html}
+<!-- 
+Author        : Marcel Goic
+Description : Conjoint analysis
+                        - v.2.0 (16/10/2025). Second Version
+Notes       : 
+-->
+```
+
+```{r install_packages, eval=FALSE}
+
+# Instalar librerías necesarias (solo si no están instaladas)
+install.packages(c(
+  "tidyverse", "kableExtra", "readxl", "DataExplorer",
+  "janitor", "mlogit", "stargazer", "scales", "modelsummary", "remotes", "purrr", "caret", "lattice"
+))
+
+# Instalar gmnl desde GitHub
+remotes::install_github("mauricio1986/gmnl")
+```
+
+::: info-bloque
+<b>Curso: </b>Ingeniería de Marketing<br> <b>Profesor: </b>Marcel Goic<br> <b>Auxiliar: </b>J. Pinochet<br> <b>Ayudantes: </b>F. Vega, M. Palma, P. Curiqueo
+:::
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Cargar librerías necesarias
+library(tidyverse)
+library(kableExtra)
+library(gmnl)
+library(readxl)
+library(DataExplorer)
+library(janitor)
+library(mlogit)
+library(stargazer)
+library(scales)
+library(modelsummary)
+library(purrr)
+library(caret)
+library(lattice)
+```
+## Enunciado
+
+Una firma está evaluando la estrategia de precios para una de sus marcas. Sin embargo, sus ejecutivos quieren tener alguna noción de los efectos que una modificación del precio actual podría traer a la compañía. Para esto, la firma encargó el estudio de elección de marca que describe la probabilidad de que los clientes elijan las distintas alternativas disponibles de acuerdo con los precios y configuraciones de los productos^1^.
+
+El estudio, detallado en el archivo *conjoint.xlsx,* comprende 400 individuos, a cada uno de los cuales se le presentan 8 tuplas de 3 productos, los cuales difieren no solo en la marca y en los niveles de precios, sino también en otras características como una apariencia o la calidad de los materiales. Para cada conjunto de elección, los participantes podían elegir entre las 3 marcas de la categoría y la opción de no compra. Además, se tiene información del precio de los productos y características demográficas de los entrevistados, tales como edad y género. La Tabla 1 muestra el detalle de las variables registradas en el estudio.
+
+```{r variables, echo=FALSE, message=FALSE, warning=FALSE}
+datos_tabla <- tribble(
+  ~No., ~Nombre,    ~Descripción,
+  1,    "ID",       "Identificador del Panelista",
+  2,    "BRAND",    "De 1 a 3 indica la marca y 4 para la opción de no compra",
+  3,    "CHOICE",   "1 si la opción fue elegida, 0 si no",
+  4,    "FASH",     "1 si el producto tiene look *fashion*, 0 si no",
+  5,    "QUAL",     "1 si el producto es de calidad alta, 0 si no",
+  6,    "PRICE",    "Precio de la opción",
+  7,    "PRICESQ",  "Precio al cuadrado",
+  8,    "ASC4",     "Variable dummy para la 4ta opción",
+  9,    "MALE",     "1 para hombre, 0 para mujer",
+  10,   "AGE25",    "1 si tiene menos de 25 años",
+  11,   "AGE39",    "1 si tiene entre 25 y 39 años",
+  12,   "AGE40",    "1 si tiene más de 40 años"
+)
+
+knitr::kable(
+  datos_tabla,
+  caption = "Tabla 1: Descripción de variables"
+)
+```
+
+La empresa no está segura sobre qué aspectos influyen en la decisión de compra de sus clientes ni la magnitud de cada uno de los efectos. Para ello, se ha propuesto implementar una serie de modelos alternativos de comportamiento que permitan entender mejor el comportamiento de compra y apoyar así la política de precios.
+
+------------------------------------------------------------------------
+
+^1^: Técnicamente, el estudio contratado corresponde a una técnica conocida como análisis conjunto. Para una breve descripción de la técnica, ver <http://sawtoothsoftware.com/download/techpap/undca15.pdf>
+
+#### Reglas del juego
+
+-   Las tareas buscan replicar parcialmente las labores a las que se enfrentarían en el análisis de datos para el apoyo en la toma de decisiones, ya sea para una organización o para la definición de políticas. Por esto, se han propuesto preguntas relativamente abiertas que requieren que ustedes discutan y decidan cuál es el mejor enfoque de solución. Les pedimos que se involucren tempranamente en el desarrollo de la tarea para tener una discusión enriquecedora.
+
+-   Todas las dudas, comentarios y errores publicarlos **exclusivamente** en el foro de u-cursos. De esta forma todos se benefician de las respuestas ofrecidas.
+
+-   Consideramos que es muy importante que logren escribir un informe conciso con una redacción acorde de un informe técnico profesional. La presentación y comunicación de resultados es parte integral de la tarea y, por tanto, será evaluada cuidadosamente.
+
+-   La tarea se desarrolla en grupos de máximo 3 integrantes. Para entregar sus resultados suba, vía u-cursos, un único archivo comprimido llamado t2-A1-A2-A3.zip, donde A1, A2 y A3 es el primer apellido de los integrantes del grupo. Incluya también los nombres de los integrantes en el documento mismo. Incluya en el zip tanto el archivo .html de salida del markdown como los códigos fuentes que permitan reproducir sus resultados.
+
+-   La fecha de entrega de la tarea es el jueves 13 de noviembre a las 23:59 horas. Si se planifica con tiempo y entrega antes de ese día, tendrá una bonificación de tres décimas. Si entrega entre el plazo de entrega y el viernes 14 de noviembre a las 10:00 horas, tendrá un descuento de dos décimas. Después de esa fecha, no habrá plazo extra para la entrega. Algunos de los modelos de machine learning o probit pueden demorar en correr y por tanto la ejecución del código final puede tardar varios minutos. Si por algún motivo de *fuerza mayor* se ve imposibilitado de entregar la tarea en el plazo estipulado, deberá escribir directamente al profesor explicando su situación. El profesor decidirá el curso de acción de acuerdo a los méritos del caso. Como siempre, es mejor dar cuenta de cualquier problema con la mayor anticipación posible.
+
+-   Recuerde que tenemos dos instancias de cátedras asociadas a la tarea:
+
+    1.  La sesión, a realizarse el día [viernes 7 de noviembre]{style="color: navy"}, es de carácter **opcional** y está destinada a que compartan sus avances y podamos identificar de manera conjunta cuáles podrían ser dificultades técnicas que requieran orientación adicional.
+
+    2.  La sesión, a realizarse el día [viernes 14 de noviembre]{style="color: navy"}, es de carácter **obligatoria** y está destinada para que expongan los resultados más relevantes de su trabajo y resuman sus principales aprendizajes, como si estuviesen presentando su trabajo a una organización interesada en los resultados. Todos los estudiantes deben estar preparados para presentar, pero si hay grupos voluntarios, se les dará preferencia.
+
+-   En esta tarea vamos a implementar un mecanismo para declarar la participación de cada estudiante en el desarrollo de la tareas, así como de herramientas de inteligencia artificial. Para ello, deben completar la tabla de roles incluida al final.
+
+-   El equipo docente considera que la copia de tareas atenta en contra de tu aprendizaje y por tanto aplicará todas las medidas que estén a su disposición para desincentivar esta mala práctica.
+
+## Preliminares
+
+Escriba acá todos los comandos que necesita ejecutar antes de abordar las preguntas de la tarea (carga de librerías, lectura de datos, limpieza de la data, transformación de variables y todo lo que necesite).
+
+```{r}
+#Preliminares
+# --- 1. Carga de Datos (UNA SOLA VEZ) ---
+# Usamos una ruta relativa. Esto funciona si "conjoint.xlsx" está 
+# en la misma carpeta que tu archivo .Rmd (idealmente, dentro de un Proyecto R).
+ruta_archivo <- "conjoint.xlsx" 
+conjoint_raw <- read_excel(ruta_archivo)
+
+# --- 2. Limpieza Básica y Creación de Variables (UNA SOLA VEZ) ---
+conjoint_base <- conjoint_raw %>%
+  janitor::clean_names() %>%
+  mutate(
+    # Variables demográficas para P1
+    age25 = as.integer(age25),
+    age39 = as.integer(age39),
+    age40 = as.integer(age40),
+    male  = as.integer(male),
+    segmento_edad = case_when(
+      age25 == 1 ~ "u25",
+      age39 == 1 ~ "25_39",
+      age40 == 1 ~ "40plus",
+      TRUE       ~ "ns/otro"
+    ),
+    segmento_edad = factor(segmento_edad, levels = c("u25","25_39","40plus","ns/otro")),
+    
+    # Variables de elección
+    no_compra = ifelse(brand == "4", 1L, 0L),
+    
+    # --- Identificadores de Set de Elección ---
+    # Esto es crucial para mlogit y debe hacerse una sola vez.
+    .row_id = row_number()
+  ) %>%
+  arrange(id, .row_id) %>%
+  group_by(id) %>%
+  mutate(set_id = ceiling(row_number() / 4L)) %>% # 4 alternativas por set
+  ungroup() %>%
+  mutate(choice_set_id = paste(id, set_id, sep = "_"))
+
+# --- 3. Chequeos Básicos ---
+# (Es bueno tenerlos aquí para verificar la carga)
+n_individuos <- dplyr::n_distinct(conjoint_base$id)
+cat("Número de individuos únicos:", n_individuos, "\n")
+cat("Chequeo de NAs:\n")
+print(sapply(conjoint_base, function(x) sum(is.na(x))))
+cat("\nTabla de 'choice':\n")
+print(table(conjoint_base$choice, useNA = "ifany"))
+```
+
+## Desarrollo
+
+#### Pregunta 1
+
+(0.5 puntos) Explore los datos para entender la participación de mercado de cada marca, así como la relación entre precios y ventas. Explore si hay algún otro factor relevante que podría inferirse de los datos más allá de los precios. *Hint: Podría ser de utilidad la función create_report() de DataReport.*
+
+```{r P1a}
+# --- INICIO P1 ---
+# Uso 'conjoint_base' que definí en "preliminares".
+cat("### Distribución por Edad ###\n")
+conjoint_base %>%
+  group_by(segmento_edad) %>%
+  summarise(
+    n_personas = n_distinct(id),
+    porcentaje = round(100 * n_personas / n_distinct(conjoint_base$id), 1)
+  ) %>%
+  arrange(segmento_edad) %>%
+  print() # Se agrega print() para que se muestre en el reporte
+
+# Gráfico de distribución etaria
+conjoint_base %>%
+  distinct(id, segmento_edad) %>%
+  ggplot(aes(x = segmento_edad, fill = segmento_edad)) +
+  geom_bar() +
+  labs(
+    title = "Distribución de individuos por tramo etario",
+    x = "Tramo de edad",
+    y = "Número de personas"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+cat("\n### Distribución por Sexo ###\n")
+# Distribución por género
+conjoint_base %>%
+  distinct(id, male) %>%
+  group_by(male) %>%
+  summarise(
+    n_personas = n(),
+    porcentaje = round(100 * n_personas / sum(n_personas), 1)
+  ) %>%
+  print()
+
+# Gráfico de proporción por sexo
+conjoint_base %>%
+  distinct(id, male) %>%
+  ggplot(aes(x = factor(male), fill = factor(male))) +
+  geom_bar() +
+  scale_x_discrete(labels = c("0" = "Mujer", "1" = "Hombre")) +
+  labs(
+    title = "Distribución de participantes por sexo",
+    x = "Sexo",
+    y = "Número de personas"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r Análisis de Mercado (Marca y Precio)}
+# --- 2. Análisis de Mercado (Marca y Precio) ---
+
+cat("\n### Share de Mercado por Marca ###\n")
+# distribucion por marca (Share)
+conjoint_base %>%
+  group_by(brand) %>%
+  summarise(
+    total_opciones = n(),
+    veces_elegida = sum(choice == 1),
+    share_eleccion = round(100 * veces_elegida / sum(conjoint_base$choice == 1), 1)
+  ) %>%
+  arrange(desc(share_eleccion)) %>%
+  print()
+
+# Gráfico de participación por marca
+conjoint_base %>%
+  filter(choice == 1) %>% # Filtro solo las elegidas
+  group_by(brand) %>%
+  summarise(veces_elegida = n()) %>%
+  ggplot(aes(x = factor(brand), y = veces_elegida, fill = factor(brand))) +
+  geom_col() +
+  labs(
+    title = "Participación de cada marca (veces elegida)",
+    x = "Marca",
+    y = "Número de elecciones"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+#La marca más común es la marca 3
+
+cat("\n### Distribución de Precios por Marca ###\n")
+# distribución precios
+conjoint_base %>%
+  group_by(brand) %>%
+  summarise(
+    precio_medio = mean(price, na.rm = TRUE),
+    precio_min = min(price, na.rm = TRUE),
+    precio_max = max(price, na.rm = TRUE),
+    n_ofertas = n()
+  ) %>%
+  print()
+
+# Gráfico de dispersión de precios por marca
+ggplot(conjoint_base, aes(x = factor(brand), y = price, color = factor(brand))) +
+  geom_point( alpha = 0.6, size = 2) +     # puntos
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "black") +  # punto negro = promedio
+  labs(
+    title = "Distribución de precios por marca (puntos individuales)",
+    x = "Marca",
+    y = "Precio"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+#La marca 2 tiene precios más elevados
+
+```
+
+
+
+```{r Parte 3}
+# --- 3. Análisis de Factores Relevantes (Precio, Fash, Qual) ---
+# (Este chunk estaba bien, solo eliminé la creación duplicada de conjoint_marcas)
+
+# Creo 'conjoint_marcas' aquí, donde se usa por primera vez.
+conjoint_marcas <- conjoint_base %>%
+  filter(brand %in% c("1", "2", "3"))
+
+# Relación precio vs. probabilidad de ser elegido
+ventas_precio <- conjoint_marcas %>%
+  group_by(brand, price) %>%
+  summarise(ventas = sum(choice == 1, na.rm = TRUE), .groups = "drop")
+
+# Tres curvas precio vs ventas
+ggplot(ventas_precio, aes(x = price, y = ventas, color = factor(brand), group = brand)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Relación Precio vs Ventas por Marca",
+    x = "Precio",
+    y = "Ventas (veces elegida)",
+    color = "Marca"
+  ) +
+  theme_minimal()
+#En todas se ve una tendencia que a mayor precio primero hay más ventas y luego decaen
+
+# Pregunta: ¿el look fashion (FASH) importa?
+cat("\n### Efecto 'Fashion' (sobre marcas 1-3) ###\n")
+fash_effect <- conjoint_marcas %>%
+  group_by(fash) %>%
+  summarise(
+    n_ofertas = n(),
+    n_elegida = sum(choice == 1),
+    tasa_eleccion = n_elegida / n_ofertas
+  )
+print(fash_effect)
+
+ggplot(fash_effect, aes(x = factor(fash), y = tasa_eleccion)) +
+  geom_col() +
+  geom_text(aes(label = scales::percent(tasa_eleccion, accuracy = 0.1)),
+            vjust = -0.3) +
+  labs(
+    x = "FASH (1 = look fashion)",
+    y = "Tasa de elección",
+    title = "Efecto promedio de 'look fashion' sobre elección"
+  ) +
+  theme_minimal()
+#Se ven diferencias
+
+# ¿la calidad alta importa?
+cat("\n### Efecto 'Calidad' (sobre marcas 1-3) ###\n")
+qual_effect <- conjoint_marcas %>%
+  group_by(qual) %>%
+  summarise(
+    n_ofertas = n(),
+    n_elegida = sum(choice == 1),
+    tasa_eleccion = n_elegida / n_ofertas
+  )
+print(qual_effect)
+
+ggplot(qual_effect, aes(x = factor(qual), y = tasa_eleccion)) +
+  geom_col() +
+  geom_text(aes(label = scales::percent(tasa_eleccion, accuracy = 0.1)),
+            vjust = -0.3) +
+  labs(
+    x = "QUAL (1 = alta calidad)",
+    y = "Tasa de elección",
+    title = "Efecto promedio de 'calidad alta' sobre elección"
+  ) +
+  theme_minimal()
+#Se ven diferencias
+```
+
+
+```{r Parte 4}
+# --- 4. Cruce de Variables y Segmentación ---
+
+# Segmentación demográfica (Sexo vs Marca)
+# Uso conjoint_base (el original) para incluir la opción "no compra"
+demog_effect <- conjoint_base %>%
+  group_by(male, brand) %>%
+  summarise(
+    n_ofertas = n(),
+    n_elegida = sum(choice == 1),
+    tasa_eleccion = n_elegida / n_ofertas,
+    .groups = "drop"
+  )
+
+ggplot(demog_effect %>% filter(brand %in% c("1","2","3","4")),
+       aes(x = factor(brand), y = tasa_eleccion, fill = factor(male))) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("0" = "#FF9999", "1" = "#99CCFF"),
+                    labels = c("Mujer", "Hombre")) +
+  labs(
+    x = "Alternativa (1-3 = marcas, 4 = no compra)",
+    y = "Tasa de elección",
+    fill = "Sexo (1=hombre)",
+    title = "Preferencias por marca / no comprar según género"
+  ) +
+  theme_minimal()
+
+# Segmentación demográfica (Edad vs Marca)
+edad_effect <- conjoint_base %>%
+  group_by(segmento_edad, brand) %>%
+  summarise(
+    n_ofertas = n(),
+    n_elegida = sum(choice == 1),
+    tasa_eleccion = n_elegida / n_ofertas,
+    .groups = "drop"
+  )
+
+ggplot(edad_effect %>% filter(brand %in% c("1","2","3","4")),
+       aes(x = factor(brand), y = tasa_eleccion, fill = segmento_edad)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Alternativa (1-3 = marcas, 4 = no compra)",
+    y = "Tasa de elección",
+    fill = "Segmento edad",
+    title = "Preferencias por marca / no comprar según edad"
+  ) +
+  theme_minimal()
+
+# relacion precio y ventas controlando por calidad:
+# (Uso conjoint_marcas que definí en el chunk anterior)
+price_quality <- conjoint_marcas %>%
+  group_by(brand, price, qual) %>%
+  summarise(
+    n_ofertas = n(),
+    n_elegida = sum(choice == 1),
+    tasa_eleccion = n_elegida / n_ofertas,
+    .groups = "drop"
+  )
+
+# Gráfico: precio vs tasa de elección, separado por calidad
+ggplot(price_quality, aes(x = price, y = tasa_eleccion,
+                          color = factor(qual), shape = factor(qual))) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_smooth(method = "loess", se = FALSE) +
+  facet_wrap(~brand) +
+  labs(
+    title = "Relación entre precio y probabilidad de elección\nsegún calidad del producto",
+    x = "Precio",
+    y = "Tasa de elección",
+    color = "Calidad (qual)",
+    shape = "Calidad (qual)"
+  ) +
+  scale_color_manual(values = c("0" = "#FF6666", "1" = "#0099CC"),
+                     labels = c("0" = "Baja", "1" = "Alta")) +
+  theme_minimal()
+```
+
+```{r Parte 5}
+# --- 5. Pruebas Chi-sq y Reporte ---
+
+# Pruebas Chi-cuadrado para ver variables relevantes
+# (uso 'conjoint_base' en todas)
+cat("\n### PRUEBAS CHI-CUADRADO (PRELIMINAR) ###\n")
+
+# 1. CALIDAD
+tabla_qual <- table(conjoint_base$choice, conjoint_base$qual)
+cat("\n### CALIDAD (qual) ###\n")
+print(chisq.test(tabla_qual))
+# es significativa
+
+#  2.FASHION
+tabla_fash <- table(conjoint_base$choice, conjoint_base$fash)
+cat("\n### FASHION (fash) ###\n")
+print(chisq.test(tabla_fash))
+#es significativa también
+
+#  3. SEXO
+tabla_male <- table(conjoint_base$choice, conjoint_base$male)
+cat("\n### SEXO (male) ###\n")
+print(chisq.test(tabla_male))
+#no es signficativa
+
+# 4. EDAD
+tabla_edad <- table(conjoint_base$choice, conjoint_base$segmento_edad)
+# eliminar columnas o filas con conteos totales = 0
+tabla_edad <- tabla_edad[, colSums(tabla_edad) > 0]
+cat("\n### EDAD (segmento_edad) ###\n")
+print(chisq.test(tabla_edad))
+#tampoco es significativo
+```
+
+El reporte de DataExplorer lo dejo comentado para no correrlo siempre.
+
+```{r}
+create_report(
+  data = conjoint_base,
+  output_file = "reporte_conjoint_EDA.html",
+  output_dir  = ".", # Guarda en la carpeta actual
+  y = "choice",
+  report_title = "Análisis Exploratorio del Estudio Conjoint"
+)
+```
+
+#### Pregunta 2
+
+A continuación se plantean una serie de modelos alternativos para describir el comportamiento de compra. En cada uno de ellos se pide, para esta pregunta en particular, que reporte los estimadores máximo-verosímiles con sus correspondientes errores estándares y una breve discusión respecto a la interpretación y significancia estadística de cada una de ellas. Finalmente se pide estadísticos **AIC**, **BIC** y $\rho^2$ para evaluar cada modelo.
+
+a.  (1.0 punto) Estime un modelo logit que considere que la componente determinística de la utilidad que el cliente $i$ deriva por sobre la alternativa $k$ en la elección $t$ viene dada por:
+
+    $$
+    v_{itk} = \alpha_k + \beta_1 \cdot PRICE_{tk} + \beta_2 \cdot QUAL_{tk} + \beta_3 \cdot FASH_{tk}
+    $$
+
+    Estime con *logit* otros 2 modelos. El primero debe incluir, además, la lealtad a la marca y el segundo debe incluir, además, precios de referencia. Compare y elija el modelo que describa de mejor forma los datos.
+
+```{r P2a}
+# --- Preparación de Datos CENTRALIZADA para P2 ---
+
+lambda <- 0.75
+alpha  <- 0.75
+
+# --- 1) Precio promedio (para P2a) ---
+avg_prices <- conjoint_base %>%
+  filter(brand != 4) %>% # No incluyo "no compra"
+  group_by(brand) %>%
+  summarise(mean_price = mean(price, na.rm = TRUE))
+
+# --- 2) Calcular variables de estado ---
+conjoint_p2_base <- conjoint_base %>%
+  left_join(avg_prices, by = "brand") %>%
+  # Aseguro que "No Compra" (BRAND 4) tenga precio 0
+  mutate(price = ifelse(brand == 4, 0, price)) %>%
+  arrange(id, brand, set_id) %>% # Ordeno para calcular bien el 'lag'
+  group_by(id, brand) %>%
+  mutate(
+    # --- Variable 1: Lealtad (znit) ---
+    # (Es idéntica para P2a y P2b)
+    lag_choice = dplyr::lag(choice, default = 0),
+    znit = tail(accumulate(lag_choice, ~ (lambda * .x) + ((1 - lambda) * .y), .init = 0), -1),
+    
+    # --- Variable 2: P.Ref para P2a (default = mean_price) ---
+    lag_price_a = dplyr::lag(price, default = first(mean_price)),
+    ref_price_mean = tail(accumulate(lag_price_a, ~ (alpha * .x) + ((1 - alpha) * .y), .init = first(mean_price)), -1),
+    
+    # --- Variable 3: P.Ref para P2b (default = 0) ---
+    lag_price_b = dplyr::lag(price, default = 0),
+    ref_price_zero = tail(accumulate(lag_price_b, ~ (alpha * .x) + ((1 - alpha) * .y), .init = 0), -1)
+  ) %>%
+  ungroup() %>%
+  # Limpio todas las columnas auxiliares
+  select(-lag_choice, -lag_price_a, -lag_price_b, -mean_price)
+
+# "No compra" no tiene lealtad ni precio de referencia
+conjoint_p2_base$znit[conjoint_p2_base$brand == 4] <- 0
+conjoint_p2_base$ref_price_mean[conjoint_p2_base$brand == 4] <- 0
+conjoint_p2_base$ref_price_zero[conjoint_p2_base$brand == 4] <- 0
+````
+
+
+
+```{r Segunda parte}
+
+# --- 1) Objeto para Logit (P2a) y Nested (P2c) ---
+# Usa 'ref_price_mean'
+data_pre_mlogit_a <- conjoint_p2_base %>%
+  select(
+    choice_set_id, id, brand, choice, price, qual, fash, znit,
+    ref_price_znit = ref_price_mean # Renombro para la fórmula
+  ) %>%
+  mutate(
+    brand  = as.factor(brand),
+    choice = as.logical(choice)
+  ) %>%
+  na.omit()
+
+data.mlogita <- mlogit.data(
+  data_pre_mlogit_a,
+  choice   = "choice",
+  shape    = "long",
+  alt.var  = "brand",
+  chid.var = "choice_set_id",
+  id.var   = "id"
+)
+
+# --- 2) Objeto para Probit (P2b) ---
+# Usa 'ref_price_zero'
+data_pre_mlogit_b <- conjoint_p2_base %>%
+  select(
+    choice_set_id, id, brand, choice, price, qual, fash, znit,
+    ref_price_znit = ref_price_zero # Renombro para la fórmula
+  ) %>%
+  mutate(
+    brand  = as.factor(brand),
+    choice = as.logical(choice)
+  ) %>%
+  na.omit()
+
+data.mlogitb <- mlogit.data(
+  data_pre_mlogit_b,
+  choice   = "choice",
+  shape    = "long",
+  alt.var  = "brand",
+  chid.var = "choice_set_id",
+  id.var   = "id"
+)
+
+# --- 3) Modelos Nulos (para R2) ---
+null_logit <- mlogit(choice ~ 1 | 1, data = data.mlogita, na.action = na.omit)
+null_probit <- mlogit(choice ~ 1, data = data.mlogitb, probit = TRUE)
+```
+
+
+```{r P2}
+
+# Como teniamos problema s para obtener algunos estadisticos, creamos una función con lo entregado por el profesor.
+
+get_model_stats <- function(model, null_model, model_name) {
+  ll   <- as.numeric(logLik(model))
+  k    <- attr(logLik(model), "df") # nro parámetros
+  aic  <- AIC(model)
+  n    <- length(unique(model$model$idx$chid)) # nro sets
+  bic  <- -2 * ll + k * log(n) # BIC manual con N=sets
+  rho2 <- 1 - (ll / as.numeric(logLik(null_model)))
+  
+  data.frame(
+    Modelo = model_name,
+    logLik = round(ll, 3),
+    AIC = round(aic, 2),
+    BIC = round(bic, 2),
+    R2_McFadden = round(rho2, 4)
+  )
+}
+```
+
+
+```{r P2A}
+# --- Estimación Modelos Logit P2a ---
+# (Uso data.mlogita)
+
+# M1: Modelo base
+m1_logita <- mlogit(choice ~ price + qual + fash, 
+                    data = data.mlogita, na.action = na.omit)
+
+# M2: Modelo base + Lealtad (znit)
+m2_logita <- mlogit(choice ~ price + qual + fash + znit, 
+                    data = data.mlogita, na.action = na.omit)
+
+# M3: Modelo base + Lealtad + P. Ref (ref_price_znit)
+m3_logit_directoa <- mlogit(choice ~ price + qual + fash + znit + ref_price_znit, 
+                            data = data.mlogita, na.action = na.omit)
+
+# Reporte con Stargazer
+stargazer(m1_logita, m2_logita, m3_logit_directoa, type = "text",
+          title = "Resultados P2.a (Logit)",
+          align = TRUE, digits = 3, report = "vcstp*")
+```
+
+```{r Estadísticos P2a}
+# --- Estadísticos de Ajuste Modelos Logit P2a ---
+stats_m1a <- get_model_stats(m1_logita, null_logit, "Logit Atributos")
+stats_m2a <- get_model_stats(m2_logita, null_logit, "Logit + Lealtad")
+stats_m3a <- get_model_stats(m3_logit_directoa, null_logit, "Logit + Lealtad + P. Ref")
+
+# --- Creación de la tabla de resultados ---
+rbind(stats_m1a, stats_m2a, stats_m3a) %>%
+  knitr::kable(digits = 3)
+```
+
+b.  (0.5 puntos) Estime los tres modelos anteriores con *probit* y compare sus resultados con respecto a los modelos anteriores. Elija el mejor modelo.
+
+```{r P2b} 
+# --- Estimación Modelos Probit P2b ---
+# (Uso data.mlogitb)
+# OJO: Esto puede demorar un poco en correr.
+
+# M1: Probit base
+m1_probit <- mlogit(choice ~ price + qual + fash, 
+                    data = data.mlogitb, probit = TRUE)
+
+# M2: Probit + Lealtad
+m2_probit <- mlogit(choice ~ price + qual + fash + znit, 
+                    data = data.mlogitb, probit = TRUE)
+
+# M3: Probit + Lealtad + P. Ref
+m3_probit <- mlogit(choice ~ price + qual + fash + znit + ref_price_znit, 
+                    data = data.mlogitb, probit = TRUE)
+
+# --- Reporte con modelsummary ---
+# (Esta parte ya era eficiente)
+rho2 <- function(model) 1 - (as.numeric(logLik(model)) / as.numeric(logLik(null_probit)))
+
+modelos_probit <- list(
+  "Probit Atributos" = m1_probit,
+  "Probit + Lealtad" = m2_probit,
+  "Probit + Lealtad + Precio Ref" = m3_probit
+)
+
+gof_map_personalizado <- list(
+  list("raw" = "nobs", "clean" = "N", "fmt" = 0)
+)
+
+filas_adicionales <- bind_rows(
+  tibble(
+    term = "Log-Likelihood",
+    `Probit Atributos` = as.character(round(logLik(m1_probit), 3)),
+    `Probit + Lealtad` = as.character(round(logLik(m2_probit), 3)),
+    `Probit + Lealtad + Precio Ref` = as.character(round(logLik(m3_probit), 3))
+  ),
+  tibble(
+    term = "AIC",
+    `Probit Atributos` = as.character(round(AIC(m1_probit), 3)),
+    `Probit + Lealtad` = as.character(round(AIC(m2_probit), 3)),
+    `Probit + Lealtad + Precio Ref` = as.character(round(AIC(m3_probit), 3))
+  ),
+  tibble(
+    term = "BIC", 
+    `Probit Atributos` = as.character(round(BIC(m1_probit), 3)),
+    `Probit + Lealtad` = as.character(round(BIC(m2_probit), 3)),
+    `Probit + Lealtad + Precio Ref` = as.character(round(BIC(m3_probit), 3))
+  ),
+  tibble(
+    term = "Pseudo-R² (McFadden)",
+    `Probit Atributos` = as.character(round(rho2(m1_probit), 3)),
+    `Probit + Lealtad` = as.character(round(rho2(m2_probit), 3)),
+    `Probit + Lealtad + Precio Ref` = as.character(round(rho2(m3_probit), 3))
+  )
+)
+
+modelsummary(
+  modelos_probit,
+  estimate  = "{estimate}{stars}",
+  statistic = "({std.error})",
+  coef_omit = "^[0-9]\\.[0-9]$", 
+  gof_map   = gof_map_personalizado,
+  add_rows  = filas_adicionales,
+  output    = "markdown"
+)
+```
+
+c.  (1.0 punto) Otra opción es considerar que los clientes deciden primero si comprar o no y luego, en el caso de comprar, eligen una de las 3 marcas. Haga un modelo logit anidado usando el modelo que incluya la utilidad, más la lealtad y los precios de referencia. Compare sus resultados con los dos mejores modelos anteriores.
+
+```{r P2c}
+# =========================================================
+# P2(c) – LOGIT ANIDADO
+# =========================================================
+# Reutilizo 'data.mlogita' de P2a, que tiene el P.Ref 'mean_price'
+
+# Definir nidos:
+nests <- list(
+  NoCompra = "4",          # Alternativa 4 = no compra
+  Compra   = c("1","2","3") # Alternativas de marcas
+)
+
+# Estimar modelo Logit Anidado
+# Uso la fórmula del modelo 3 (el más completo)
+m_nested <- mlogit(
+  choice ~ price + qual + fash + znit + ref_price_znit,
+  data  = data.mlogita, # Uso el set de datos de P2a
+  nests = nests,
+  un.nest.el = TRUE        # Estima parámetros de disimilitud
+)
+
+# Mostrar resultados completos
+summary(m_nested)
+
+# Modelo nulo ANIDADO (necesario para el R2)
+null_nested <- mlogit(choice ~ 1, data = data.mlogita, nests = nests, un.nest.el = TRUE)
+
+# Mostrar parámetro de disimilitud del nido Compra:
+cat("\nParámetro de disimilitud (inclusive value) del anidado:\n")
+print(coef(m_nested)[grepl("iv|Compra", names(coef(m_nested)), ignore.case = TRUE)])
+cat("\nInterpretación: Si iv ~ 1 ⇒ el modelo anidado NO agrega estructura.\n")
+```
+
+```{r P2c2}
+# --- Comparación Final P2 ---
+# (Uso la función 'get_model_stats' del chunk helper)
+
+# Asumo que comparamos los modelos M2 (con lealtad) y el anidado M3.
+# Si quieres comparar los M3, solo cambia las variables.
+stats_m2a <- get_model_stats(m2_logita, null_logit,   "Logit + Lealtad (M2a)")
+stats_m2b <- get_model_stats(m2_probit, null_probit, "Probit + Lealtad (M2b)")
+stats_nested <- get_model_stats(m_nested,  null_nested, "Nested Logit (M3 anidado)")
+
+# Construir tabla comparativa
+tabla_comp <- rbind(
+  stats_m2a,
+  stats_m2b,
+  stats_nested
+)
+
+cat("\n=================== COMPARACIÓN FINAL P2 ===================\n")
+# Imprimo la tabla con formato
+print(noquote(format(tabla_comp, justify="left")), row.names = FALSE)
+```
+
+#### Pregunta 3
+
+Para esta pregunta, debe escoger uno de los modelos estimados en la pregunta anterior que considere que ajusta bien a los datos.
+
+(1.0 punto) Para aumentar la capacidad descriptiva del modelo, considere que pueden existir distintos segmentos entre los consumidores del producto. Re-estime el modelo considerando heterogeneidad no observable con clases latentes, determine cuántos segmentos debe incluir en el modelo y justifique su elección. Además, caracterice cada uno de los segmentos resultantes. *Indicación: Instale al inicio del archivo la librería gmnl mediante remotes::install_github("mauricio1986/gmnl")*
+
+```{r P3}
+#Heterogeneidad no observable
+```
+
+#### Pregunta 4
+
+(1.0 punto) Escoja un clasificador de aprendizaje de máquinas visto en clases. Calíbrelo con dos conjuntos de datos de entrenamiento distintos. Deben elegir las variables de acuerdo a las que consideren más significativas. El código debe ir documentado y deben reportar la capacidad de pronóstico y analizarlo utilizando la función confusionMatrix() de la librería Caret. *Hint: Le puede ser útil la siguiente guía [Choosing the right estimator](https://scikit-learn.org/stable/machine_learning_map.html)*.
+
+```{r P4a}
+# --- P4: Preparación de Datos para Machine Learning ---
+
+# 1) Preparar datos base para ML
+# (Aplico las transformaciones de 'conjoint_ml' directamente a 'conjoint_base')
+conjoint_ml <- conjoint_base %>%
+  mutate(
+    # La metodolgía de P4 convierte 'brand' en el target multiclase
+    brand  = factor(brand, levels = c(1,2,3,4), labels = c("M1","M2","M3","NoCompra")),
+    # Convierte predictores a factores
+    qual   = factor(qual),
+    fash   = factor(fash),
+    male   = factor(male)
+    
+    # 'price' es numérico (se queda igual)
+    # 'segmento_edad' ya es un factor (creado en preliminares)
+  )
+
+# 2) Matriz de predictores (X) y target (y)
+# (Esta es la metodología de P4 que no se debe cambiar)
+
+pred_formula <- ~ price + qual + fash + male + segmento_edad
+dv <- dummyVars(pred_formula, data = conjoint_ml)      
+X_all <- predict(dv, newdata = conjoint_ml) %>% as.data.frame()
+y_all <- conjoint_ml$brand # El target es 'brand' (multiclase)                       
+
+cat("\nClases disponibles (total):\n"); print(table(y_all))
+
+# Control de entrenamiento (CV 5-fold)
+ctrl <- trainControl(method = "cv", number = 5)
+```
+
+
+```{r P4 Calibración}
+# --- P4: CALIBRACIÓN 1 (Split 80/20) ---
+# (Metodología P4 sin cambios)
+
+set.seed(123)
+idx1 <- createDataPartition(y_all, p = 0.8, list = FALSE)
+
+X_tr1 <- X_all[idx1, , drop = FALSE]
+X_te1 <- X_all[-idx1, , drop = FALSE]
+y_tr1 <- y_all[idx1]
+y_te1 <- y_all[-idx1]
+
+cat("\nDistribución de clases (train 1):\n"); print(prop.table(table(y_tr1)))
+cat("\nDistribución de clases (test 1):\n");  print(prop.table(table(y_te1)))
+
+# Entrenamiento KNN (centrar/escalar + búsqueda de k)
+set.seed(123)
+knn1 <- train(
+  x = X_tr1, y = y_tr1,
+  method = "knn",
+  preProcess = c("center","scale"),
+  trControl = ctrl,
+  tuneLength = 15
+)
+
+# Curva de validación (k vs Accuracy)
+print(knn1)
+plot(knn1)
+
+# Evaluación en test 1 (multiclase)
+pred1 <- predict(knn1, newdata = X_te1)
+conf1 <- confusionMatrix(pred1, y_te1)
+cat("\n=== Resultados Calibración 1 (80/20) ===\n")
+print(conf1)
+```
+
+
+```{r calibración2}
+# --- P4: CALIBRACIÓN 2 (Split 70/30) ---
+# (Metodología P4 sin cambios)
+
+set.seed(456)
+idx2 <- createDataPartition(y_all, p = 0.7, list = FALSE)
+
+X_tr2 <- X_all[idx2, , drop = FALSE]
+X_te2 <- X_all[-idx2, , drop = FALSE]
+y_tr2 <- y_all[idx2]
+y_te2 <- y_all[-idx2]
+
+cat("\nDistribución de clases (train 2):\n"); print(prop.table(table(y_tr2)))
+cat("\nDistribución de clases (test 2):\n");  print(prop.table(table(y_te2)))
+
+set.seed(456)
+knn2 <- train(
+  x = X_tr2, y = y_tr2,
+  method = "knn",
+  preProcess = c("center","scale"),
+  trControl = ctrl,
+  tuneLength = 15
+)
+
+print(knn2)
+plot(knn2)
+
+pred2 <- predict(knn2, newdata = X_te2)
+conf2 <- confusionMatrix(pred2, y_te2)
+cat("\n=== Resultados Calibración 2 (70/30) ===\n")
+print(conf2)
+```
+
+
+## Resumen
+
+(1.0 punto) A partir de los modelos realizados previamente, discuta sus resultados y descubrimientos más relevantes. ¿Qué concluye sobre las preferencias de los clientes?
+
+```{r P5}
+#Summary
+```
+
+## Anexos
+
+Documenta acá cualquier otro adicional que considere útil tener de referencia.
+
+Todos los participantes del grupo de trabajo declaran que su participación queda bien reflejada en la siguiente tabla.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+roles <- data.frame(
+  integrantes = c("Integrante 1", "Integrante 2", "Integrante 3"),
+  P1 = c("código", "interpretación", "código e interpretación"),
+  P2 = c("interpretación", "-", "código e interpretación"),
+  P3 = c("-", "-", "código e interpretación"),
+  P4 = c("interpretación", "interpretación", "código"),
+  Resumen = c("interpretación", "código", "-")
+)
+
+roles %>%
+  kbl(caption = "**Tabla N+1:** Roles de los Participantes en el trabajo") %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+```
+
+Asimismo, los participantes del grupo de trabajo declaran que el uso de herramientas de inteligencia artificial (IA) queda bien reflejada en la siguiente tabla.
+
+```{r, echo=FALSE}
+iarole <- data.frame(
+  preguntas = c("P1", "P2", "P3", "P4", "Resumen"), 
+  uso = c("escribir códigos para formatear los datos", 
+          "interpretar los resultados", 
+          "-", 
+          "-", 
+          "Encontrar errores en el código"), 
+  herramienta = c("Chat GPT-5", 
+                  "Ninguna", 
+                  "Chat GPT-5", 
+                  "Chat GPT-5", 
+                  "Chat GPT-5, DeepSeek")
+)
+
+iarole %>%
+  kbl(caption = "**Tabla N+2:** Rol de la IA en el trabajo") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
