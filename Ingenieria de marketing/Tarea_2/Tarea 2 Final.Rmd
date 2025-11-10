@@ -496,8 +496,8 @@ a.  (1.0 punto) Estime un modelo logit que considere que la componente determin√
 ```{r P2a}
 # --- Preparaci√≥n de Datos CENTRALIZADA para P2 ---
 
-lambda <- 0.75
-alpha  <- 0.75
+lambda <- 0.25
+alpha  <- 0.25
 
 # --- 1) Precio promedio (para P2a) ---
 avg_prices <- conjoint_base %>%
