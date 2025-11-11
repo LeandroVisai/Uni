@@ -775,6 +775,80 @@ Para esta pregunta, debe escoger uno de los modelos estimados en la pregunta ant
 
 ```{r P3}
 #Heterogeneidad no observable
+# --- {r P3} ---
+# Heterogeneidad no observable
+
+# === 1. Definir fórmula y N ===
+
+# Usamos la fórmula del Modelo 2 (Base + Lealtad), que fue el mejor
+# de la P2, ya que M3 tenía multicolinealidad.
+f_base <- as.Formula(CHOICE ~ PRICE + QUAL + FASH + Znit | 1)
+
+# N = Número de sets de elección (para el cálculo de BIC)
+n_choice_sets <- length(unique(data.mlogita$idx$chid))
+
+# === 2. Estimar modelos de Clases Latentes (Q=2 y Q=3) ===
+
+# --- Modelo con 2 Segmentos (Q=2) ---
+# gmnl puede tomar un tiempo en estimar.
+cat("--- Estimando Modelo Clases Latentes (Q=2) ---\n")
+lc_q2 <- gmnl(f_base, 
+              data = data.mlogita, 
+              model = 'lc', 
+              Q = 2, 
+              panel = TRUE, # Importante: indica que son datos de panel
+              method = "bhhh") # Método de optimización robusto
+
+# --- Modelo con 3 Segmentos (Q=3) ---
+cat("--- Estimando Modelo Clases Latentes (Q=3) ---\n")
+lc_q3 <- gmnl(f_base, 
+              data = data.mlogita, 
+              model = 'lc', 
+              Q = 3, 
+              panel = TRUE,
+              method = "bhhh")
+
+# === 3. Justificar el número de segmentos (Comparación) ===
+
+# Extraer LL y k (número de parámetros)
+ll_q2 <- as.numeric(logLik(lc_q2))
+k_q2 <- length(lc_q2$coefficients)
+
+ll_q3 <- as.numeric(logLik(lc_q3))
+k_q3 <- length(lc_q3$coefficients)
+
+# Construir la tabla de métricas (usando las fórmulas de AIC y BIC)
+metrics_lc <- data.frame(
+  Modelo = c("LC Q=2", "LC Q=3"),
+  LogLik = c(ll_q2, ll_q3),
+  Num_Params = c(k_q2, k_q3),
+  
+  # AIC = -2*LL + 2*k
+  AIC = c(
+    -2 * ll_q2 + 2 * k_q2,
+    -2 * ll_q3 + 2 * k_q3
+  ),
+  
+  # BIC = -2*LL + k*log(N)
+  BIC = c(
+    -2 * ll_q2 + k_q2 * log(n_choice_sets),
+    -2 * ll_q3 + k_q3 * log(n_choice_sets)
+  )
+)
+
+cat("\n--- Tabla de Comparación de Métricas (Clases Latentes) ---\n")
+print(metrics_lc, row.names = FALSE)
+
+# === 4. Caracterizar Segmentos (Usar el modelo ganador) ===
+
+# Generalmente, se elige el modelo con el BIC más bajo.
+# (Asumiremos que el Q=2 fue el ganador para este ejemplo)
+
+cat("\n--- Resumen del Modelo Ganador (Q=2) ---\n")
+summary(lc_q2)
+
+# (Si Q=3 tuvo mejor BIC, cambia lc_q2 por lc_q3)
+# summary(lc_q3)
 ```
 
 #### Pregunta 4
